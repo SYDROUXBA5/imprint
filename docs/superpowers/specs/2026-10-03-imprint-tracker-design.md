@@ -51,7 +51,7 @@ Start → Stop → the session is recorded.
   trained first, cut to one line: e.g. "MDMA 42/75 · Cocaine ✓".
 - Any running timer in the unit is pinned at the top: "Running · Rex · MDMA · 12:04 · Paul".
 - Trainer only: "+ Add dog" (name only).
-- A badge shows unsynced items: "3 sessions not synced yet".
+- A badge shows unsynced records: "3 records not synced yet".
 
 **Dog screen**
 - Toggle at the top: **Narcotics | Explosives**.
@@ -92,6 +92,9 @@ Start → Stop → the session is recorded.
   closing the app does not affect it.
 - Only the handler who started a session can stop it. If they can't, a trainer
   corrects or voids it later.
+- A timed session that has a trainer correction is no longer running, even if
+  Stop was never pressed. This is how a forgotten Stop is closed and the dog
+  freed for the next session.
 - One running session per dog at a time, across all odours.
 - A handler may run timers on different dogs at the same time.
 
