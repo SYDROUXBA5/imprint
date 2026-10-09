@@ -11,6 +11,11 @@ const AUTH_STUB = `
   $$;
   grant usage on schema auth to authenticated, anon;
   grant execute on function auth.uid() to authenticated, anon;
+  -- Supabase grants EXECUTE on every new public function to anon and authenticated
+  -- (default privileges). Mirror that, so a missing REVOKE ... FROM anon shows up here.
+  alter default privileges in schema public grant execute on functions to anon, authenticated;
+  -- Supabase ships this publication; the realtime migrations add tables to it.
+  create publication supabase_realtime;
 `;
 
 const GRANTS = `
@@ -22,8 +27,8 @@ export async function freshDb(withSchema = true): Promise<PGlite> {
   const db = new PGlite();
   await db.exec(AUTH_STUB);
   if (withSchema) {
-    // Every migration in order, except the Supabase-only realtime publication ones.
-    const files = readdirSync('supabase/migrations').filter((f) => f.endsWith('.sql') && !f.includes('realtime')).sort();
+    // Every migration in order. The realtime ones run too, against the stub publication above.
+    const files = readdirSync('supabase/migrations').filter((f) => f.endsWith('.sql')).sort();
     for (const f of files) await db.exec(readFileSync(`supabase/migrations/${f}`, 'utf8'));
     await db.exec(GRANTS);
   }
