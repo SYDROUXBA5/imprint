@@ -1,5 +1,5 @@
 import { PGlite } from '@electric-sql/pglite';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 
 const AUTH_STUB = `
   create role authenticated nologin;
@@ -22,7 +22,9 @@ export async function freshDb(withSchema = true): Promise<PGlite> {
   const db = new PGlite();
   await db.exec(AUTH_STUB);
   if (withSchema) {
-    await db.exec(readFileSync('supabase/migrations/0001_init.sql', 'utf8'));
+    // Every migration in order, except the Supabase-only realtime publication ones.
+    const files = readdirSync('supabase/migrations').filter((f) => f.endsWith('.sql') && !f.includes('realtime')).sort();
+    for (const f of files) await db.exec(readFileSync(`supabase/migrations/${f}`, 'utf8'));
     await db.exec(GRANTS);
   }
   return db;
