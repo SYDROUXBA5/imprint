@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ImprintDB } from '../../src/data/db';
-import { addDog, startSession, stopSession, type Ctx } from '../../src/data/repo';
+import { addCorrection, addDog, startSession, stopSession, type Ctx } from '../../src/data/repo';
 import type { RemoteError, RemoteStore } from '../../src/data/remote';
-import { pullChanges, pushOutbox, syncStatus } from '../../src/data/sync';
+import { pullChanges, pushOutbox, syncOnce, syncStatus, takeNotices } from '../../src/data/sync';
 import type { Member } from '../../src/domain/types';
 
 const trainer: Member = { id: 'mT', unit_id: 'u1', user_id: 'uT', name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
@@ -89,5 +89,97 @@ describe('syncStatus', () => {
     const later = new Date('2026-10-04T10:00:01Z');
     expect(await syncStatus(db, later)).toMatchObject({ pending: 1, stale: true });
     expect(await syncStatus(db, new Date('2026-10-03T12:00:00Z'))).toMatchObject({ stale: false });
+  });
+});
+
+const tombstone = (dogId: string) => ({
+  dog_id: dogId, unit_id: 'u1', deleted_by: 'mT',
+  deleted_at: '2026-10-03T10:20:00.000Z', updated_at: '2026-10-03T10:20:00.000Z',
+});
+const FK = { code: '23503', message: 'insert or update on table "sessions" violates foreign key constraint' };
+const GONE = 'A session for a deleted dog was discarded.';
+
+describe('deleted dogs (tombstones)', () => {
+  it('purges the dog, its sessions, corrections and every outbox item that refers to them', async () => {
+    const rex = await addDog(ctx(), 'Rex');
+    const max = await addDog(ctx(), 'Max');
+    const rexSession = await startSession(ctx(), rex.id, 'mdma');
+    await stopSession(ctx(), rexSession.id);
+    await addCorrection(ctx(), rexSession.id, { void: true, reason: 'wrong dog' });
+    const maxSession = await startSession(ctx(), max.id, 'cocaine');
+    // a stuck (rejected) item for Rex must go too
+    const stuck = (await db.outbox.toArray()).find((i) => i.table === 'sessions' && i.op === 'insert' && i.row.id === rexSession.id)!;
+    await db.outbox.update(stuck.seq!, { status: 'rejected', error: 'x' });
+
+    const { remote, serverRows } = fakeRemote();
+    serverRows.deleted_dogs = [tombstone(rex.id)];
+    await pullChanges({ db, remote, unitId: 'u1', now });
+
+    expect(await db.dogs.get(rex.id)).toBeUndefined();
+    expect(await db.sessions.get(rexSession.id)).toBeUndefined();
+    expect(await db.corrections.count()).toBe(0);
+    expect((await db.dogs.get(max.id))?.name).toBe('Max');
+    expect(await db.sessions.get(maxSession.id)).toBeDefined();
+    const left = await db.outbox.toArray();
+    expect(left.map((i) => `${i.table}:${i.op}:${i.row.id}`)).toEqual([
+      `dogs:insert:${max.id}`, `sessions:insert:${maxSession.id}`,
+    ]);
+    expect((await db.meta.get('cursor:deleted_dogs'))?.value).toBe('2026-10-03T10:20:00.000Z');
+  });
+
+  it('applies a tombstone even when the dog has unsent local changes, and tolerates an unknown dog', async () => {
+    const rex = await addDog(ctx(), 'Rex');
+    const { remote, serverRows } = fakeRemote();
+    serverRows.deleted_dogs = [tombstone(rex.id), tombstone('never-seen-here')];
+    await pullChanges({ db, remote, unitId: 'u1', now });
+    expect(await db.dogs.count()).toBe(0);
+    expect(await db.outbox.count()).toBe(0);
+  });
+
+  it('drops an insert whose dog was deleted elsewhere, and says so once', async () => {
+    const failures: (RemoteError | null)[] = [];
+    const { remote, serverRows } = fakeRemote(failures);
+    const rex = await addDog(ctx(), 'Rex');
+    await pushOutbox({ db, remote, unitId: 'u1', now }); // Rex reached the server
+    const s = await startSession(ctx(), rex.id, 'mdma');
+    await stopSession(ctx(), s.id);
+    failures.push(FK); // someone deleted Rex forever: the session insert hits the FK
+
+    const res = await pushOutbox({ db, remote, unitId: 'u1', now });
+    expect(res).toEqual({ pushed: 0, rejected: 0, stalled: false });
+    expect(await db.outbox.count()).toBe(0); // insert and its Stop are both gone, nothing stuck
+    expect(await takeNotices(db)).toEqual([GONE]);
+    expect(await takeNotices(db)).toEqual([]);
+
+    // the tombstone then clears the local copy
+    serverRows.deleted_dogs = [tombstone(rex.id)];
+    await syncOnce({ db, remote, unitId: 'u1', now });
+    expect(await db.dogs.count()).toBe(0);
+    expect(await db.sessions.count()).toBe(0);
+  });
+
+  it('drops a correction whose session vanished with the dog, with its own notice', async () => {
+    const failures: (RemoteError | null)[] = [];
+    const { remote } = fakeRemote(failures);
+    const rex = await addDog(ctx(), 'Rex');
+    const s = await startSession(ctx(), rex.id, 'mdma');
+    await pushOutbox({ db, remote, unitId: 'u1', now });
+    await addCorrection(ctx(), s.id, { void: true, reason: 'oops' });
+    failures.push({ ...FK, message: 'violates foreign key constraint on corrections' });
+    await pushOutbox({ db, remote, unitId: 'u1', now });
+    expect(await db.outbox.count()).toBe(0);
+    expect(await takeNotices(db)).toEqual(['A correction for a deleted dog was discarded.']);
+  });
+
+  it('keeps an FK failure as rejected when the dog itself never reached the server', async () => {
+    const failures: (RemoteError | null)[] = [{ code: '42501', message: 'row-level security' }];
+    const { remote } = fakeRemote(failures);
+    const rex = await addDog(ctx(), 'Rex');
+    await startSession(ctx(), rex.id, 'mdma');
+    failures.push(FK); // dog insert rejected above; the session then fails its FK as a consequence
+    const res = await pushOutbox({ db, remote, unitId: 'u1', now });
+    expect(res).toEqual({ pushed: 0, rejected: 2, stalled: false });
+    expect(await syncStatus(db)).toMatchObject({ pending: 0, rejected: 2 });
+    expect(await takeNotices(db)).toEqual([]);
   });
 });

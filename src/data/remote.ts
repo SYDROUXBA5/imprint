@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface RemoteError { code?: string; message: string }
-export type PulledTable = 'units' | 'members' | 'dogs' | 'sessions' | 'corrections';
+export type PulledTable = 'units' | 'members' | 'dogs' | 'sessions' | 'corrections' | 'deleted_dogs';
 
 export interface RemoteStore {
   insert(table: string, row: Record<string, unknown>): Promise<{ error?: RemoteError }>;
