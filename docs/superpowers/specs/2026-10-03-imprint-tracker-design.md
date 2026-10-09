@@ -23,8 +23,8 @@ duration and handler.
 | 4 | Odours | Fixed built-in list (§6). Units cannot add odours. |
 | 5 | Mistakes | Timer plus manual entries and trainer corrections, all flagged and traceable. |
 | 6 | Dog details | Name only. |
-| 7 | Roles | Trainer and handler (§8). |
-| 8 | Export | None. The log is viewed in the app. |
+| 7 | Roles | Trainer and handler (§8). The unit runs with two trainers; everyone else joins as a handler and can only add time. |
+| 8 | Export | Trainers only: a CSV of every session and a PDF progress report per dog (§8a). *(Changed 2026-10-09.)* |
 | 9 | Audience | Private use for one unit. No App Store, no payments. |
 | 10 | Phones | Mixed iPhone and Android. |
 | 11 | Signal | Mostly online, must keep working offline. |
@@ -33,6 +33,8 @@ duration and handler.
 | 14 | Celebration | Animation when a dog's total for an odour reaches 75:00 (§5). |
 | 15 | Hosting cost | Start on the Supabase free plan; move to Pro ($25/month) if pauses become a problem. |
 | 16 | Visual style | "Trainer's Field Guide" (§11). |
+| 17 | Removing a dog | Archive first (hidden, history kept, restorable). A trainer can then delete an archived dog forever after typing its name. *(Added 2026-10-09.)* |
+| 18 | Hosting | Public GitHub repo + GitHub Pages. The code holds no secrets; all data sits in Supabase behind each member's login. *(Added 2026-10-09.)* |
 
 ## 3. Screens and flow
 
@@ -144,12 +146,16 @@ database, so names can be corrected later without breaking records.
   - Manual: session_date and duration_s set; started_at/ended_at empty.
 - `corrections`: id, session_id, unit_id, trainer_id, void (bool),
   new_duration_s (empty when void), reason (required, non-empty), created_at
+- `deleted_dogs`: dog_id, unit_id, deleted_by, deleted_at (tombstones, read by sync)
 
 **Rules**
 
 1. Sessions are never edited or deleted. The only change allowed is the
    starting handler setting `ended_at` and `duration_s` once, on their own
-   running session. Everything else is a new correction row.
+   running session. Everything else is a new correction row. The single
+   exception: a trainer deleting an archived dog forever (§8), which removes
+   the dog, its sessions and its corrections in one server transaction and
+   writes a `deleted_dogs` row so other phones purge their local copies.
 2. A session's current duration = its latest correction's `new_duration_s`
    (by `created_at`), 0 if that correction is a void, otherwise its own
    `duration_s`.
@@ -196,11 +202,39 @@ Enforced by Postgres Row Level Security, not only by hiding buttons.
 | See the unit's dogs, sessions, log | ✓ | ✓ |
 | Start / stop own timed session | ✓ | ✓ |
 | Add manual session | ✓ | ✓ |
-| Add / rename / archive dog | | ✓ |
+| Add / rename / archive / restore dog | | ✓ |
+| Delete an archived dog forever (type its name to confirm) | | ✓ |
+| Export CSV / PDF (§8a) | | ✓ |
 | Correct or void a session | | ✓ |
 | Remove member, change role, regenerate invite code | | ✓ |
 
 No member can read or write another unit's data.
+
+Export is a trainer-only button, not a security boundary: handlers can already
+read the whole log. Delete-forever is enforced on the server by a
+`delete_dog_forever` function that checks the caller is an active trainer.
+
+## 8a. Export
+
+Built on the phone from synced local data. If the outbox is not empty, the
+export screen says "N items not synced yet; they will be missing from this
+export." Files go out through the share sheet (Web Share API with a file:
+Files, Mail, WhatsApp, AirDrop); where that is unavailable, a normal download.
+
+**CSV, all sessions** (`imprint-<unit>-<yyyy-mm-dd>.csv`, UTF-8 with BOM so
+Excel shows accents): one row per session, archived dogs included. Columns:
+dog, dog archived, group, odour, handler, kind (timed/manual), date, start,
+end, recorded duration (mm:ss and seconds), current duration after
+corrections, voided, correction reasons (joined with " | "), flags (Overlap,
+Clock check).
+
+**PDF, one dog** (`imprint-<dog>-<yyyy-mm-dd>.pdf`, A4 portrait, Field Guide
+colours): dog name, unit, generated date and by whom; then narcotics and
+explosives tables, one row per odour: total (mm:ss), progress bar to 75:00,
+date imprinted (the date of the session at which the running total, in
+chronological order, reached 4500 s; blank if not yet), session count.
+Footer: number of manual sessions and corrections. jsPDF, loaded only when a
+PDF is generated.
 
 ## 9. Error handling
 
@@ -268,6 +302,6 @@ contrast meets WCAG AA.
 
 ## 12. Not in version 1
 
-PDF or CSV export, dog details beyond name, custom odours, a target other than
+Dog details beyond name, custom odours, a target other than
 75 min, App Store release, push notifications, membership of several units,
 dark mode.

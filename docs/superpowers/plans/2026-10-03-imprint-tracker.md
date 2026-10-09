@@ -2482,3 +2482,61 @@ Record the results in `docs/PHONE-CHECK.md` and commit.
 | §10 testing | Vitest T2–T20, PGlite T6–T8, Playwright T22, phones T24 |
 | §11 visual direction | T12, T14–T17, T21 icons |
 | §12 out of scope | Nothing built for export, dog details, custom odours, App Store, notifications, multi-unit, dark mode |
+
+---
+
+# Amendments — 2026-10-09
+
+Spec changes: §2 decisions 7, 8, 17, 18; §6 rule 1 exception and `deleted_dogs`;
+§8 rows; new §8a Export. Each amendment task below runs **right after** the task
+named in its heading, same TDD rhythm (failing test → watch it fail → implement →
+pass → commit).
+
+### Task A1 (after Task 8): delete-forever on the server
+
+**Files:** new migration `supabase/migrations/0002_delete_forever.sql`; tests in `tests/db/delete-forever.test.ts`.
+
+- `deleted_dogs` table: `dog_id uuid primary key, unit_id uuid not null references units, deleted_by uuid not null references members, deleted_at timestamptz not null default now()`. RLS on; members of the unit can select; no insert/update/delete policies. Add an `updated_at`-style column or reuse `deleted_at` for the incremental pull, matching how Task 10 pulls other tables.
+- `delete_dog_forever(dog uuid) returns void`, plpgsql, `security definer set search_path = public`, `revoke execute ... from public; grant ... to authenticated`. Refuses unless: caller is an active (not removed) trainer of the dog's unit; the dog is archived; the dog has no running session. Then, in that order: delete corrections of the dog's sessions, delete the sessions, delete the dog, insert the `deleted_dogs` row. If Task 7 added triggers or `force row level security` that block these deletes, make the function the one permitted path (e.g. a transaction-local setting the trigger checks) — do not loosen the API-level "no delete" rule.
+- Restore: confirm the Task 7 policies let a trainer set `archived_at` back to null and a handler cannot; add the test either way.
+- Tests: handler refused; trainer of another unit refused; non-archived dog refused; dog with a running session refused; trainer succeeds → dog, sessions, corrections gone, tombstone visible to a handler of the unit and invisible to another unit; plain `delete from dogs` / `delete from sessions` through the API is still refused for a trainer.
+- Commit: `feat(db): trainer-only delete-forever for archived dogs`.
+
+### Task A2 (after Task 10): sync purges deleted dogs
+
+- Pull `deleted_dogs` incrementally like the other tables and via the Realtime subscription. For each tombstone: delete the local dog, its sessions and corrections, and any outbox items that reference that dog.
+- An outbox insert rejected because its dog no longer exists (FK violation) is dropped, not left stuck, and surfaces once as "A session for a deleted dog was discarded."
+- Tests in the sync test file: tombstone purges local rows + outbox; FK-rejected insert is dropped with the notice.
+- Commit: `feat(sync): purge dogs deleted forever`.
+
+### Task 15 changes (Dog screen)
+
+Carried over from the review of the Base44 version:
+- Archive asks first: "Archive Bella? It disappears from the list; you can restore it from Archived." (dialog, not one tap).
+- The Narcotics/Explosives tab lives in the URL (`?group=explosives`), so coming back from the timer keeps it. With no `group` in the URL, open on the group of the running odour, else narcotics.
+- The live clock only ticks while this dog has a running session.
+- Group toggle buttons have `aria-pressed`; decorative dots are `aria-hidden`.
+- Trainers also get "Progress report (PDF)" here (built in Task A4; hide until then).
+
+### Task A3 (after Task 19): archived dogs, restore, delete forever
+
+**Files:** `src/ui/screens/ArchivedDogsScreen.tsx` (route `/archived`), link "Archived (n)" at the bottom of the Dogs screen for trainers only; `deleteDogForever` + `restoreDog` in `src/data/actions.ts` (restore goes through the outbox; delete-forever is an online-only RPC like team changes).
+- Each archived dog: name, archived date, "Restore", "Delete forever". Delete forever opens a dialog: "This erases Bella and all N sessions. It cannot be undone. Type Bella to confirm." The button stays disabled until the typed name matches exactly (trimmed, case-sensitive).
+- Offline: both buttons disabled with "Needs signal." for delete; restore works offline.
+- Handlers never see the link or the route (redirect to `/`).
+- Tests: handler doesn't see the link; typed-name gate; offline state; success removes the dog locally.
+- Commit: `feat(ui): archived dogs with restore and delete forever`.
+
+### Task A4 (after Task 20): export
+
+**Files:** `src/export/csv.ts` (pure), `src/export/imprintedDate.ts` (pure), `src/export/pdf.ts` (dynamic `import('jspdf')`), `src/export/share.ts`; tests in `tests/export/`.
+- `sessionsCsv(...)` builds the §8a CSV: BOM, header row, RFC 4180 quoting (commas, quotes, newlines in names/reasons), current duration from the domain functions (Task 3), voided rows kept with `voided = yes`.
+- `imprintedDate(sessions, corrections)` per odour: chronological running total of current durations; the date of the session that reaches 4500 s, or null.
+- `dogReportPdf(...)` returns a Blob (test: starts with `%PDF`, size > 0). Layout per §8a.
+- `shareOrDownload(blob, filename)`: `navigator.canShare?.({ files: [file] })` → `navigator.share`; else object-URL download. User cancelling the share sheet is not an error.
+- UI: Team screen gets "Export all sessions (CSV)" (trainers); Dog screen gets "Progress report (PDF)" (trainers). Both show the unsynced-items warning from §8a when the outbox is not empty.
+- Commit: `feat(export): CSV of all sessions and per-dog PDF report`.
+
+### Task 23 note
+
+Rémi approved a **public** repo + GitHub Pages on 2026-10-09. Still confirm the repo name with Rémi immediately before the first push.
