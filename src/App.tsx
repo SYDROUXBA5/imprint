@@ -1,10 +1,12 @@
-import { useEffect } from 'react';
+import { useEffect, type ReactElement } from 'react';
 import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { db } from './data/db';
 import { supabaseRemote } from './data/remote';
 import { startSyncLoop } from './data/sync';
 import { supabase } from './data/supabase';
+import type { Member } from './domain/types';
 import { useMe } from './hooks/useMe';
+import { ArchivedDogsScreen } from './ui/screens/ArchivedDogsScreen';
 import { DogScreen } from './ui/screens/DogScreen';
 import { DogsScreen } from './ui/screens/DogsScreen';
 import { LogScreen } from './ui/screens/LogScreen';
@@ -31,14 +33,24 @@ export default function App() {
 
   return (
     <HashRouter>
-      <Routes>
-        <Route path="/" element={<DogsScreen />} />
-        <Route path="/dog/:dogId" element={<DogScreen />} />
-        <Route path="/dog/:dogId/timer/:odourId" element={<TimerScreen />} />
-        <Route path="/dog/:dogId/log" element={<LogScreen />} />
-        <Route path="/team" element={me.role === 'trainer' ? <TeamScreen /> : <Navigate to="/" />} />
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
+      <AppRoutes me={me} />
     </HashRouter>
+  );
+}
+
+/** Trainer-only screens: a handler who types the address is sent back to the dogs list. */
+const trainerOnly = (me: Member, screen: ReactElement) => (me.role === 'trainer' ? screen : <Navigate to="/" replace />);
+
+export function AppRoutes({ me }: { me: Member }) {
+  return (
+    <Routes>
+      <Route path="/" element={<DogsScreen />} />
+      <Route path="/dog/:dogId" element={<DogScreen />} />
+      <Route path="/dog/:dogId/timer/:odourId" element={<TimerScreen />} />
+      <Route path="/dog/:dogId/log" element={<LogScreen />} />
+      <Route path="/archived" element={trainerOnly(me, <ArchivedDogsScreen />)} />
+      <Route path="/team" element={trainerOnly(me, <TeamScreen />)} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   );
 }

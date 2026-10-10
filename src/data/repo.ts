@@ -65,6 +65,12 @@ export async function archiveDog(c: Ctx, dogId: string): Promise<void> {
   await write(c, 'dogs', 'update', { id: dogId, archived_at: nowOf(c).toISOString() });
 }
 
+/** Bring an archived dog back. Offline-capable like archiving: it goes through the outbox. */
+export async function restoreDog(c: Ctx, dogId: string): Promise<void> {
+  requireTrainer(c);
+  await write(c, 'dogs', 'update', { id: dogId, archived_at: null });
+}
+
 export async function startSession(c: Ctx, dogId: string, odourId: string): Promise<Session> {
   const running = await runningSessionForDog(c.db, dogId);
   if (running) throw new AlreadyRunningError(running);

@@ -22,7 +22,7 @@ const NO_SYNC = { pending: 0, rejected: 0, stale: false };
 
 export function DogsScreen() {
   const me = useMe();
-  const { dogs, members, sessions, corrections, loading } = useUnitData();
+  const { dogs, archivedDogs, members, sessions, corrections, loading } = useUnitData();
   const navigate = useNavigate();
   const sync = useLiveQuery(() => syncStatus(db), [], NO_SYNC);
   const [adding, setAdding] = useState(false);
@@ -128,6 +128,15 @@ export function DogsScreen() {
             );
           })}
         </ul>
+
+        {isTrainer && archivedDogs.length > 0 && (
+          <Link to="/archived" style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 'var(--tap)', marginTop: 16,
+            fontWeight: 800, textDecoration: 'underline',
+          }}>
+            {`Archived (${archivedDogs.length})`}
+          </Link>
+        )}
       </main>
 
       <Sheet open={adding} onClose={() => { setAdding(false); setAddError(''); }} title="Add dog">
