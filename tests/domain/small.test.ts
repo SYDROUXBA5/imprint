@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { crossedTarget } from '../../src/domain/celebration';
-import { formatClock, formatMinutesOfTarget, localDate } from '../../src/domain/format';
+import { formatClock, formatDay, formatMinSec, formatMinutesOfTarget, localDate } from '../../src/domain/format';
 import { isValidInviteCode, normalizeInviteCode } from '../../src/domain/inviteCode';
 
 describe('crossedTarget', () => {
@@ -23,6 +23,20 @@ describe('format', () => {
   it('formats progress as whole minutes of 75', () => {
     expect(formatMinutesOfTarget(2520)).toBe('42/75');
     expect(formatMinutesOfTarget(4499)).toBe('74/75');
+  });
+
+  it('formats totals as minutes:seconds, never switching to hours', () => {
+    expect(formatMinSec(0)).toBe('0:00');
+    expect(formatMinSec(724)).toBe('12:04');
+    expect(formatMinSec(4500)).toBe('75:00');
+    expect(formatMinSec(6065)).toBe('101:05');
+  });
+
+  it('formats a calendar date as "3 Oct" or "3 Oct 2026"', () => {
+    expect(formatDay('2026-10-03', false)).toBe('3 Oct');
+    expect(formatDay('2026-10-03')).toBe('3 Oct 2026');
+    expect(formatDay('2026-01-31')).toBe('31 Jan 2026');
+    expect(formatDay('2026-12-09', false)).toBe('9 Dec');
   });
 
   it('gives the local calendar date', () => {
