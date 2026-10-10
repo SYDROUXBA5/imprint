@@ -2,12 +2,14 @@ import { useMemo, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { db } from '../../data/db';
 import { archiveDog, renameDog } from '../../data/repo';
+import { exportDogReport } from '../../export/run';
 import { formatMinutesOfTarget } from '../../domain/format';
 import { odoursIn, odourById, type OdourGroup } from '../../domain/odours';
 import { IMPRINT_TARGET_S, isImprinted, isRunning, odourTotal } from '../../domain/totals';
 import { useMe } from '../../hooks/useMe';
 import { useNow } from '../../hooks/useNow';
 import { useUnitData } from '../../hooks/useUnitData';
+import { ExportButton } from '../components/ExportButton';
 import { HeaderBar } from '../components/HeaderBar';
 import { ImprintedStamp } from '../components/ImprintedStamp';
 import { PillToggle } from '../components/PillToggle';
@@ -128,6 +130,11 @@ export function DogScreen() {
               Rename
             </button>
             <button type="button" className="btn" style={{ flex: 1 }} onClick={askToArchive}>Archive</button>
+          </div>
+        )}
+        {isTrainer && (
+          <div style={{ marginTop: 12 }}>
+            <ExportButton label="Progress report (PDF)" run={() => exportDogReport(db, me, dog.id)} />
           </div>
         )}
         {isTrainer && blocked && runningHere && (

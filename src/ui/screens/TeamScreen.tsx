@@ -2,10 +2,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { loadMe, regenerateInviteCode, removeMember, setRole } from '../../data/account';
 import { db } from '../../data/db';
+import { exportAllSessionsCsv } from '../../export/run';
 import type { Member, Role } from '../../domain/types';
 import { useMe } from '../../hooks/useMe';
 import { useOnline } from '../../hooks/useOnline';
 import { useUnitData } from '../../hooks/useUnitData';
+import { ExportButton } from '../components/ExportButton';
 import { HeaderBar } from '../components/HeaderBar';
 import { Sheet } from '../components/Sheet';
 
@@ -131,6 +133,11 @@ export function TeamScreen() {
               </li>
             ))}
           </ul>
+        </section>
+
+        <section aria-label="Export" style={{ marginTop: 24 }}>
+          <h2 style={{ fontSize: 22, marginBottom: 8 }}>Export</h2>
+          <ExportButton label="Export all sessions (CSV)" run={() => exportAllSessionsCsv(db)} />
         </section>
 
         {removed.length > 0 && (
