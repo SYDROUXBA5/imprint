@@ -54,3 +54,10 @@ export async function setRole(memberId: string, role: Role) {
   const { error } = await supabase.from('members').update({ role }).eq('id', memberId);
   fail(error);
 }
+
+/** True when Supabase already holds a signed-in session on this device. */
+export async function hasSession(): Promise<boolean> {
+  const { data, error } = await supabase.auth.getSession();
+  fail(error);
+  return !!data.session;
+}

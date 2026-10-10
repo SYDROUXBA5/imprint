@@ -9,7 +9,7 @@ const member: Member = {
 const eq = vi.fn();
 const maybeSingle = vi.fn();
 const fake = {
-  auth: { signUp: vi.fn(), signInWithPassword: vi.fn(), getUser: vi.fn() },
+  auth: { signUp: vi.fn(), signInWithPassword: vi.fn(), getUser: vi.fn(), getSession: vi.fn() },
   rpc: vi.fn(),
   from: vi.fn(),
 };
@@ -116,5 +116,14 @@ describe('team actions', () => {
     await expect(account.setRole('m9', 'trainer')).rejects.toThrow(/row-level security/);
     expect(update).toHaveBeenCalledWith({ role: 'trainer' });
     expect(eqUpdate).toHaveBeenCalledWith('id', 'm9');
+  });
+});
+
+describe('hasSession', () => {
+  it('is true only when Supabase holds a session', async () => {
+    fake.auth.getSession.mockResolvedValueOnce({ data: { session: { access_token: 't' } }, error: null });
+    expect(await account.hasSession()).toBe(true);
+    fake.auth.getSession.mockResolvedValueOnce({ data: { session: null }, error: null });
+    expect(await account.hasSession()).toBe(false);
   });
 });
