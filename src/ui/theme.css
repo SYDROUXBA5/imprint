@@ -1,0 +1,62 @@
+@import '@fontsource/nunito/600.css';
+@import '@fontsource/nunito/700.css';
+@import '@fontsource/nunito/800.css';
+
+:root {
+  --paper: #F5EFDC;
+  --rule: #E3D9BC;
+  --mustard: #B8901C;
+  --olive: #55601F;
+  --ink: #1E1A14;
+  --stamp: #C0322B;
+  --radius: 14px;
+  --tap: 48px;
+  font-family: 'Nunito', system-ui, sans-serif;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--paper);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  background:
+    repeating-linear-gradient(to bottom, transparent 0 31px, var(--rule) 31px 32px),
+    var(--paper);
+}
+
+h1, h2, h3 { font-weight: 800; margin: 0; }
+button { font: inherit; color: inherit; min-height: var(--tap); cursor: pointer; }
+a { color: inherit; }
+.num { font-variant-numeric: tabular-nums; }
+
+/* One phone-width column, centred on larger screens. */
+.screen { max-width: 480px; margin: 0 auto; min-height: 100dvh; padding-bottom: 32px; }
+.pad { padding: 16px; }
+
+:focus-visible { outline: 3px solid var(--ink); outline-offset: 2px; }
+
+/* Controls */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  min-height: var(--tap); padding: 0 20px; border-radius: 999px;
+  border: 1.5px solid var(--ink); background: var(--paper); color: var(--ink);
+  font-weight: 800; font-size: 18px; text-decoration: none;
+}
+.btn-primary { background: var(--mustard); }
+.btn:disabled, .btn[aria-disabled='true'] { opacity: 0.5; cursor: not-allowed; }
+
+.field {
+  display: block; width: 100%; min-height: var(--tap); padding: 0 14px;
+  border: 1.5px solid var(--ink); border-radius: 10px; background: #fffdf5;
+  font: inherit; font-size: 18px; color: var(--ink);
+}
+.label { display: block; margin: 12px 0 4px; font-weight: 800; }
+.error { color: var(--stamp); font-weight: 700; margin: 8px 0 0; }
+.muted { opacity: 0.75; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}
