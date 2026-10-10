@@ -82,7 +82,7 @@ export function DogScreen() {
         ) : undefined} />
       <main className="pad">
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12 }}>
-          <BreedPortrait breed={dog.breed} size="md" play />
+          <BreedPortrait breed={dog.breed} size="md" play idle={!!runningHere} />
           <p style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>{`${breedLabel(dog.breed)} · ${purposeLabel(dog.purpose)}`}</p>
         </div>
         {groups.length > 0 && shown && (

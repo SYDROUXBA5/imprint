@@ -37,7 +37,7 @@ function DogForm({ onClose, teams, teamId, dog }: Omit<DogSheetProps, 'open'>) {
   const me = useMe();
   const [name, setName] = useState(dog?.name ?? '');
   const [breed, setBreed] = useState<BreedId | ''>(dog?.breed ?? '');
-  const [chose, setChose] = useState(false); // the drawing plays when you choose, not when the sheet opens
+  const [choices, setChoices] = useState(0); // the drawing plays on each choice, not when the sheet opens
   const [purpose, setPurpose] = useState<Purpose | ''>(dog?.purpose ?? '');
   const [team, setTeam] = useState(dog?.team_id ?? teamId ?? '');
   const [error, setError] = useState('');
@@ -77,7 +77,7 @@ function DogForm({ onClose, teams, teamId, dog }: Omit<DogSheetProps, 'open'>) {
       <p className="label" id="breed-label">Breed</p>
       <div style={{ display: 'grid', placeItems: 'center', minHeight: 192, marginBottom: 8 }}>
         {breed ? (
-          <BreedPortrait key={breed} breed={breed} size="lg" play={chose} />
+          <BreedPortrait key={choices} breed={breed} size="lg" play={choices > 0} />
         ) : (
           <p className="muted" style={{ margin: 0, fontWeight: 800 }}>Choose a breed</p>
         )}
@@ -86,7 +86,7 @@ function DogForm({ onClose, teams, teamId, dog }: Omit<DogSheetProps, 'open'>) {
         {BREEDS.map((b) => {
           const selected = b.id === breed;
           return (
-            <button key={b.id} type="button" aria-pressed={selected} onClick={() => { setBreed(b.id); setChose(true); }}
+            <button key={b.id} type="button" aria-pressed={selected} onClick={() => { setBreed(b.id); setChoices((n) => n + 1); }}
               style={{
                 padding: '4px 6px', border: '1.5px solid var(--ink)', borderRadius: 10, fontSize: 15, fontWeight: 800,
                 lineHeight: 1.15, background: selected ? 'var(--ink)' : 'var(--paper)',

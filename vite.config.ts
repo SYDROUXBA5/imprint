@@ -35,7 +35,10 @@ export default defineConfig(({ command, mode }) => {
             { src: 'maskable-icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
           ],
         },
-        workbox: { globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'] },
+        // webp covers breeds/*.webp (spec §13.3). The drawings are git-ignored previews for now, so a clean
+        // checkout has none: the pattern then matches nothing, the build still passes, and BreedPortrait
+        // falls back to its ink paw.
+        workbox: { globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2,webp}'] },
       }),
     ],
   }

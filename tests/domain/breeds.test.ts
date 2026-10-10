@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BREEDS, PURPOSES, breedLabel, isBreedId, purposeLabel } from '../../src/domain/breeds';
+import { BREEDS, BREED_NOSES, PURPOSES, breedLabel, isBreedId, purposeLabel } from '../../src/domain/breeds';
 
 describe('breeds (spec §13.3)', () => {
   it('lists the nine ids, in order, with "other" last', () => {
@@ -28,5 +28,22 @@ describe('purposes', () => {
     expect(PURPOSES.map((p) => p.id)).toEqual(['single', 'dual']);
     expect(purposeLabel('single')).toBe('Single purpose');
     expect(purposeLabel('dual')).toBe('Dual purpose');
+  });
+});
+
+describe('breed nose points (spec §13.3)', () => {
+  it('has one nose per breed, as percentages of the square drawing', () => {
+    expect(Object.keys(BREED_NOSES).sort()).toEqual(BREEDS.map((b) => b.id).sort());
+    for (const b of BREEDS) {
+      const { x, y } = BREED_NOSES[b.id];
+      expect(x).toBeGreaterThan(0);
+      expect(x).toBeLessThan(100);
+      expect(y).toBeGreaterThan(0);
+      expect(y).toBeLessThan(100);
+    }
+  });
+
+  it('puts every nose on the left of the drawing, because the dogs face left', () => {
+    for (const b of BREEDS) expect(BREED_NOSES[b.id].x).toBeLessThan(20);
   });
 });

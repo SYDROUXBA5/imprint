@@ -197,6 +197,19 @@ describe('TeamDogsScreen', () => {
       expect(dialog.getByRole('img', { name: 'Labrador' })).toBeInTheDocument();
     });
 
+    it('replays the drawing on every choice, including tapping the breed that is already chosen', async () => {
+      const dialog = await open();
+      await userEvent.click(dialog.getByRole('button', { name: 'Hound' }));
+      const stageOf = (name: string) => dialog.getByRole('img', { name }).closest('[data-stage]');
+      const first = stageOf('Hound');
+      expect(first).not.toBeNull();
+      await userEvent.click(dialog.getByRole('button', { name: 'Hound' }));
+      const again = stageOf('Hound');
+      expect(again).not.toBe(first);
+      await userEvent.click(dialog.getByRole('button', { name: 'Bloodhound' }));
+      expect(dialog.getByRole('img', { name: 'Bloodhound' }).closest('[data-breed-portrait]')).toHaveAttribute('data-motion', 'animated');
+    });
+
     it('adds the dog to this team with the chosen breed and purpose, through the outbox', async () => {
       const dialog = await open();
       await userEvent.type(dialog.getByLabelText('Dog name'), '  Ziggy ');

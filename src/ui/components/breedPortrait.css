@@ -1,0 +1,59 @@
+/*
+ * BreedPortrait motion (spec §13.3). Only transform, opacity and clip-path are animated, so it stays on
+ * the compositor on phones.
+ *
+ *   0.0 - 0.6 s   ink reveal   the drawing wipes in left to right (.bp-ink, clip-path)
+ *   0.6 - 0.9 s   stamp settle  scale 1.05 -> 1 and rotate -2deg -> 0 with a tiny overshoot (.bp-stage)
+ *   0.9 s on      sniff loop    two quick nose-down bobs, then rest, every 3.2 s (.bp-body), while three
+ *                               scent wisps drift in to the nose and fade (.bp-wisp)
+ *
+ * The drawings are side profiles facing left with their paws on the ground at about 80% of the height, so
+ * the settle pivots on the paws and the sniff pivots near the hind paws (the head moves, the paws stay).
+ *
+ * mix-blend-mode: multiply sits on the outer element. A transform or clip-path makes an element its own
+ * stacking context, and a multiply inside one would blend with nothing and leave the paper-white box on
+ * the cream page. The <img> keeps its own multiply for the still drawing; inside the group it is a no-op.
+ */
+.breed-portrait {
+  position: relative; display: inline-block; flex: none; line-height: 0; mix-blend-mode: multiply;
+}
+.bp-stage, .bp-ink, .bp-body { display: block; width: 100%; height: 100%; }
+.bp-stage { transform-origin: 50% 80%; }
+.bp-body { transform-origin: 80% 80%; }
+
+.is-animated .bp-ink { animation: bp-reveal 0.6s cubic-bezier(0.4, 0, 0.2, 1) both; }
+.is-animated .bp-stage { animation: bp-settle 0.3s ease-out 0.6s backwards; }
+.is-sniffing .bp-body { animation: bp-sniff 3.2s ease-in-out 0.9s infinite; }
+
+.bp-wisps { position: absolute; width: 0; height: 0; pointer-events: none; }
+.bp-wisp { position: absolute; right: 0; opacity: 0; overflow: visible; animation: bp-drift 3.2s ease-in-out infinite backwards; }
+
+@keyframes bp-reveal {
+  from { clip-path: inset(0 100% 0 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes bp-settle {
+  0% { transform: scale(1.05) rotate(-2deg); }
+  65% { transform: scale(0.99) rotate(0.4deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+/* Negative is anticlockwise, which drops the left-hand side: the nose goes down. */
+@keyframes bp-sniff {
+  0%, 28%, 100% { transform: rotate(0deg); }
+  7%, 21% { transform: rotate(-1.4deg); }
+  14% { transform: rotate(0deg); }
+}
+
+/* Active for the first 45% of the loop (the two bobs), then still. The head of the wisp ends on the nose. */
+@keyframes bp-drift {
+  0% { opacity: 0; transform: translateX(calc(var(--drift) * -1)); }
+  15% { opacity: 0.55; }
+  45%, 100% { opacity: 0; transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .breed-portrait *, .breed-portrait *::before, .breed-portrait *::after { animation: none !important; }
+  .bp-wisps { display: none; }
+}

@@ -208,6 +208,25 @@ describe('DogScreen', () => {
     expect(portrait).toHaveAttribute('data-play', 'true'); // plays once on open
   });
 
+  it('plays the header drawing once on open, then rests while no timer is running for the dog', async () => {
+    await seed();
+    await db.dogs.update('d1', { breed: 'malinois' });
+    renderDog();
+    const portrait = (await screen.findByRole('img', { name: 'Malinois' })).closest('[data-breed-portrait]')!;
+    expect(portrait).toHaveAttribute('data-motion', 'animated');
+    expect(portrait).not.toHaveClass('is-sniffing');
+    expect(portrait.querySelector('[data-wisps]')).toBeNull();
+  });
+
+  it('lets the header drawing sniff, with scent wisps, while a timer is running for the dog', async () => {
+    await seed(trainer, [running('r', 'tnt', new Date().toISOString())]);
+    await db.dogs.update('d1', { breed: 'malinois' });
+    renderDog();
+    const portrait = (await screen.findByRole('img', { name: 'Malinois' })).closest('[data-breed-portrait]')!;
+    await waitFor(() => expect(portrait).toHaveClass('is-sniffing'));
+    expect(portrait.querySelectorAll('[data-wisp]')).toHaveLength(3);
+  });
+
   it('sends you home when the dog is not here (or is archived)', async () => {
     await seed();
     await db.dogs.update('d1', { archived_at: '2026-10-04T00:00:00Z' });
