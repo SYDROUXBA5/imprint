@@ -1,3 +1,4 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ImprintDB, OutboxItem } from './db';
 import type { PulledTable, RemoteError, RemoteStore } from './remote';
 
@@ -147,5 +148,31 @@ export async function syncStatus(db: ImprintDB, now = new Date()) {
     pending: new Set(pending.map((i) => i.row.id)).size,
     rejected: new Set(rejected.map((i) => i.row.id)).size,
     stale: !!oldest && now.getTime() - Date.parse(oldest) > STALE_MS,
+  };
+}
+
+/**
+ * Sync now, then again on every Realtime change, every `intervalMs`, and whenever the browser
+ * comes back online. Returns a function that stops it all.
+ */
+export function startSyncLoop(d: SyncDeps, client: SupabaseClient, intervalMs = 30_000): () => void {
+  let busy = false;
+  const run = async () => {
+    if (busy || !navigator.onLine) return;
+    busy = true;
+    try { await syncOnce(d); } catch { /* retried on the next tick */ } finally { busy = false; }
+  };
+  const channel = client.channel(`unit-${d.unitId}`);
+  for (const table of ['dogs', 'members', 'sessions', 'corrections', 'deleted_dogs']) {
+    channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `unit_id=eq.${d.unitId}` }, run);
+  }
+  channel.subscribe();
+  window.addEventListener('online', run);
+  const timer = setInterval(run, intervalMs);
+  void run();
+  return () => {
+    clearInterval(timer);
+    window.removeEventListener('online', run);
+    void client.removeChannel(channel);
   };
 }
