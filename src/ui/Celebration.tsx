@@ -59,7 +59,7 @@ export function Celebration({ dog, odour, onDone }: CelebrationProps) {
       <span className="celebration-art">
         <span className="celebration-splash" aria-hidden="true">
           <svg viewBox="0 0 320 200" width="320" height="200">
-            <path fill="var(--ink)"
+            <path fill="var(--stamp)"
               d="M160 14c22 2 30 22 52 26 24 4 54-6 62 18 8 22-14 36-10 56 4 22 26 36 8 54-16 16-40 4-60 12-22 10-30 38-56 32-24-6-20-34-40-44-22-10-52 0-64-22-10-20 14-34 12-54-2-22-30-34-14-54 14-18 40-6 58-14 20-8 28-16 52-10z" />
           </svg>
         </span>
