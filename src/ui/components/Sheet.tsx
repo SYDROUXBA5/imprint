@@ -5,11 +5,10 @@ interface SheetProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
-  role?: 'dialog' | 'alertdialog';
 }
 
 /** Bottom sheet. Escape, the Close button and the backdrop all call onClose. */
-export function Sheet({ open, onClose, title, children, role = 'dialog' }: SheetProps) {
+export function Sheet({ open, onClose, title, children }: SheetProps) {
   const titleId = useId();
   const panel = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
@@ -33,7 +32,7 @@ export function Sheet({ open, onClose, title, children, role = 'dialog' }: Sheet
     <div style={{ position: 'fixed', inset: 0, zIndex: 50 }}>
       <div data-testid="sheet-backdrop" onClick={onClose}
         style={{ position: 'absolute', inset: 0, background: 'rgba(30, 26, 20, 0.45)' }} />
-      <div ref={panel} role={role} aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
+      <div ref={panel} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
         style={{
           position: 'absolute', left: 0, right: 0, bottom: 0, margin: '0 auto', maxWidth: 480,
           maxHeight: '88dvh', overflowY: 'auto', background: 'var(--paper)',
