@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import type { Correction, Dog, Member, Session } from '../../src/domain/types';
+import type { Correction, Dog, Member, Session, Team } from '../../src/domain/types';
 import { CSV_HEADER, sessionsCsv } from '../../src/export/csv';
-import { CATEGORIES, ODOURS, dogRow } from '../fixtures';
+import { CATEGORIES, ODOURS, dogRow, team } from '../fixtures';
 
 const member = (id: string, name: string, role: Member['role'] = 'handler'): Member => ({
   id, unit_id: 'u1', user_id: `u-${id}`, name, role, joined_at: '', removed_at: null,
@@ -10,7 +10,9 @@ const tess = member('mT', 'Tess', 'trainer');
 const hana = member('mA', 'Hana');
 const paul = member('mP', 'Paul');
 const dog = (id: string, name: string, archived: string | null = null): Dog => dogRow(id, name, { archived_at: archived });
-const rex = dog('d1', 'Rex');
+const alpha = team('t1', 'Alpha');
+const bravo = team('t2', 'Bravo');
+const rex = dogRow('d1', 'Rex', { breed: 'malinois', purpose: 'dual' });
 const bella = dog('d2', 'Bella', '2026-10-06T00:00:00Z');
 
 const manual = (id: string, odour: string, handler: Member, date: string, seconds: number, dogId = 'd1'): Session => ({
@@ -47,8 +49,8 @@ function parseCsv(text: string): string[][] {
   return rows;
 }
 const NOW = Date.parse('2026-10-09T12:00:00Z');
-const build = (sessions: Session[], corrections: Correction[] = [], dogs: Dog[] = [rex, bella], members: Member[] = [tess, hana, paul]) =>
-  sessionsCsv({ dogs, members, sessions, corrections, odours: ODOURS, categories: CATEGORIES, nowMs: NOW });
+const build = (sessions: Session[], corrections: Correction[] = [], dogs: Dog[] = [rex, bella], members: Member[] = [tess, hana, paul], teams: Team[] = [alpha, bravo]) =>
+  sessionsCsv({ dogs, teams, members, sessions, corrections, odours: ODOURS, categories: CATEGORIES, nowMs: NOW });
 const body = (csv: string) => parseCsv(csv.slice(1)).slice(1);
 const col = (name: (typeof CSV_HEADER)[number]) => CSV_HEADER.indexOf(name);
 
@@ -59,7 +61,7 @@ describe('sessionsCsv', () => {
     expect(csv.slice(1).split('\r\n')[0]).toBe(CSV_HEADER.join(','));
     expect(csv.endsWith('\r\n')).toBe(true);
     expect(CSV_HEADER).toEqual([
-      'dog', 'dog archived', 'group', 'odour', 'handler', 'kind', 'date', 'start', 'end',
+      'dog', 'dog archived', 'team', 'breed', 'purpose', 'category', 'odour', 'handler', 'kind', 'date', 'start', 'end',
       'recorded duration (mm:ss)', 'recorded duration (s)', 'current duration (mm:ss)', 'current duration (s)',
       'voided', 'correction reasons', 'flags',
     ]);
@@ -77,11 +79,11 @@ describe('sessionsCsv', () => {
     expect(rows).toHaveLength(2);
     const bellaRow = rows.find((r) => r[col('dog')] === 'Bella')!;
     expect(bellaRow[col('dog archived')]).toBe('yes');
-    expect(bellaRow[col('group')]).toBe('Explosives');
+    expect(bellaRow[col('category')]).toBe('Explosives');
     expect(bellaRow[col('odour')]).toBe('TNT');
     const rexRow = rows.find((r) => r[col('dog')] === 'Rex')!;
     expect(rexRow[col('dog archived')]).toBe('no');
-    expect(rexRow[col('group')]).toBe('Narcotics');
+    expect(rexRow[col('category')]).toBe('Narcotics');
   });
 
   it('fills a timed session: handler, kind, date, local start and end, recorded and current durations', () => {
@@ -205,7 +207,7 @@ describe('sessionsCsv', () => {
 
     it('leaves plain fields unquoted and keeps accents as they are', () => {
       const csv = build([manual('a', 'mdma', member('mQ', 'Rémi'), '2026-10-03', 600)], [], [rex], [member('mQ', 'Rémi')]);
-      expect(csv).toContain('Rex,no,Narcotics,MDMA,Rémi,manual,2026-10-03,,,10:00,600,10:00,600,no,,');
+      expect(csv).toContain('Rex,no,Alpha,Malinois,Dual purpose,Narcotics,MDMA,Rémi,manual,2026-10-03,,,10:00,600,10:00,600,no,,');
     });
 
     it('stops a spreadsheet from running a name or reason that starts like a formula', () => {
@@ -220,6 +222,32 @@ describe('sessionsCsv', () => {
     });
   });
 
+  it('names each dog\'s team, breed and purpose in words', () => {
+    const luna = dogRow('d3', 'Luna', { team_id: 't2', breed: 'german-shepherd', purpose: 'single' });
+    const rows = body(build([manual('a', 'mdma', hana, '2026-10-03', 60), manual('b', 'tnt', hana, '2026-10-03', 60, 'd3')], [], [rex, luna]));
+    const of = (name: string) => rows.find((r) => r[col('dog')] === name)!;
+    expect([of('Rex')[col('team')], of('Rex')[col('breed')], of('Rex')[col('purpose')]]).toEqual(['Alpha', 'Malinois', 'Dual purpose']);
+    expect([of('Luna')[col('team')], of('Luna')[col('breed')], of('Luna')[col('purpose')]]).toEqual(['Bravo', 'German Shepherd', 'Single purpose']);
+  });
+
+  it('leaves the team blank for a dog whose team is not in the list, and quotes or defuses a team name like any typed text', () => {
+    const odd = team('t9', '=SUM(A1), "x"');
+    const stray = dogRow('d4', 'Stray', { team_id: 'gone' });
+    const lost = body(build([manual('a', 'mdma', hana, '2026-10-03', 60, 'd4')], [], [stray]));
+    expect(lost[0][col('team')]).toBe('');
+    const sums = body(build([manual('a', 'mdma', hana, '2026-10-03', 60, 'd5')], [], [dogRow('d5', 'Quinn', { team_id: 't9' })], [hana], [odd]));
+    expect(sums[0][col('team')]).toBe('\'=SUM(A1), "x"');
+  });
+
+  it('keeps the same columns and flags when it is given only one team\'s dogs and sessions', () => {
+    const luna = dogRow('d3', 'Luna', { team_id: 't2' });
+    const all = build([manual('a', 'mdma', hana, '2026-10-03', 60), manual('b', 'tnt', hana, '2026-10-03', 60, 'd3')], [], [rex, luna]);
+    const onlyAlpha = build([manual('a', 'mdma', hana, '2026-10-03', 60)], [], [rex]);
+    expect(onlyAlpha.split('\r\n')[0]).toBe(all.split('\r\n')[0]);
+    expect(body(onlyAlpha)).toHaveLength(1);
+    expect(body(onlyAlpha)[0]).toEqual(body(all).find((r) => r[col('dog')] === 'Rex'));
+  });
+
   it('names an odour and its category from the catalogue given, custom and archived ones too', () => {
     const categories = [...CATEGORIES, { id: 'currency', unit_id: 'u1', name: 'Currency, cash', sort: 5, created_at: '', archived_at: null }];
     const odours = [
@@ -227,11 +255,11 @@ describe('sessionsCsv', () => {
       { id: 'notes', unit_id: 'u1', category_id: 'currency', name: 'Banknotes', created_at: '', archived_at: null },
     ];
     const csv = sessionsCsv({
-      dogs: [rex], members: [hana], corrections: [], odours, categories, nowMs: NOW,
+      dogs: [rex], teams: [alpha], members: [hana], corrections: [], odours, categories, nowMs: NOW,
       sessions: [manual('a', 'notes', hana, '2026-10-03', 60), manual('b', 'tnt', hana, '2026-10-04', 60), manual('c', 'human-remains', hana, '2026-10-05', 60)],
     });
     const rows = body(csv);
-    expect(rows.map((r) => [r[col('group')], r[col('odour')]])).toEqual([
+    expect(rows.map((r) => [r[col('category')], r[col('odour')]])).toEqual([
       ['Currency, cash', 'Banknotes'], ['Explosives', 'TNT'], ['Cadaver', 'Human remains'],
     ]);
   });
@@ -240,6 +268,6 @@ describe('sessionsCsv', () => {
     const [row] = body(build([{ ...manual('a', 'mdma', hana, '2026-10-03', 60), handler_id: 'ghost', odour_id: 'old-odour' }]));
     expect(row[col('handler')]).toBe('Unknown');
     expect(row[col('odour')]).toBe('old-odour');
-    expect(row[col('group')]).toBe('');
+    expect(row[col('category')]).toBe('');
   });
 });

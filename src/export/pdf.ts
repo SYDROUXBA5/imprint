@@ -1,12 +1,16 @@
+import { breedLabel, purposeLabel } from '../domain/breeds';
 import { formatDay, formatMinSec, localDate } from '../domain/format';
 import { sortCategories, sortOdours } from '../domain/odours';
 import { IMPRINT_TARGET_S, latestCorrection, odourTotal } from '../domain/totals';
-import type { Correction, Dog, Odour, OdourCategory, Session } from '../domain/types';
+import type { Correction, Dog, Odour, OdourCategory, Session, Team, TeamOdour } from '../domain/types';
 import { imprintedDate } from './imprintedDate';
+import { reportOdours } from './reportOdours';
 
 export interface DogReportInput {
   dog: Dog;
   unitName: string;
+  /** Shown after the unit in the page header, when there is one. */
+  teamName?: string;
   generatedBy: string;
   generatedAt: Date;
   /** This dog's sessions and the corrections to them. Rows for other dogs are ignored. */
@@ -41,33 +45,107 @@ const X_IMPRINTED = 148;
 const X_SESSIONS_RIGHT = PAGE_W - MARGIN - 2;
 
 /**
- * One A4 page: dog, unit, who made it and when; a Narcotics and an Explosives table with one row per odour
- * (total mm:ss, bar to 75:00, date imprinted, session count); and a footer counting manual sessions and
- * corrections. jsPDF is fetched here, on first use, so it stays out of the main bundle.
+ * One A4 page: dog, breed and purpose, unit (and team), who made it and when; a table per category with one
+ * row per odour (total mm:ss, bar to 75:00, date imprinted, session count); and a footer counting manual
+ * sessions and corrections. jsPDF is fetched here, on first use, so it stays out of the main bundle.
  */
 export async function dogReportPdf(input: DogReportInput): Promise<Blob> {
   const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  doc.setProperties({ title: pdfSafe(`${input.dog.name} progress report`), creator: 'Imprint' });
+  drawDogPage(doc, input);
+  return doc.output('blob');
+}
+
+export interface TeamReportInput {
+  team: Team;
+  unitName: string;
+  generatedBy: string;
+  generatedAt: Date;
+  /** Any dogs: the team's active ones get a page each, in name order. Archived dogs and other teams' dogs are skipped. */
+  dogs: Dog[];
+  sessions: Session[];
+  corrections: Correction[];
+  /** The whole catalogue, archived rows included, and the team's tick-boxes; each page lists what the team trains on. */
+  categories: OdourCategory[];
+  odours: Odour[];
+  teamOdours: TeamOdour[];
+}
+
+/**
+ * The team report (spec 13.6): the dog page, one per active dog of the team, with the team's categories as
+ * its sections. A dog with a lot of odours may run over to a second page, as in the single-dog report.
+ */
+export async function teamReportPdf(input: TeamReportInput): Promise<Blob> {
+  const { jsPDF } = await import('jspdf');
+  const { team, unitName, generatedBy, generatedAt, categories, odours, teamOdours } = input;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
+  doc.setProperties({ title: pdfSafe(`${team.name} team report`), creator: 'Imprint' });
+
+  const dogs = input.dogs
+    .filter((d) => d.team_id === team.id && d.archived_at === null)
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }) || a.id.localeCompare(b.id));
+
+  if (dogs.length === 0) {
+    drawHeader(doc, { title: team.name, subtitle: 'Team report', unitLine: unitName, generated: generatedLine(generatedAt, generatedBy) });
+    doc.setTextColor(...INK);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(12);
+    doc.text('No active dogs in this team.', MARGIN, 52);
+    return doc.output('blob');
+  }
+
+  dogs.forEach((dog, i) => {
+    if (i > 0) doc.addPage();
+    const sessions = input.sessions.filter((s) => s.dog_id === dog.id);
+    const mine = new Set(sessions.map((s) => s.id));
+    drawDogPage(doc, {
+      dog, unitName, teamName: team.name, generatedBy, generatedAt, sessions,
+      corrections: input.corrections.filter((c) => mine.has(c.session_id)),
+      categories, odours: reportOdours(dog, sessions, { categories, odours, teamOdours }),
+    });
+  });
+  return doc.output('blob');
+}
+
+type Doc = InstanceType<Awaited<typeof import('jspdf')>['jsPDF']>;
+
+const generatedLine = (at: Date, by: string) => `Generated ${formatDay(localDate(at))} by ${by}`;
+
+/** The mustard band across the top of a page: a title, then up to three smaller lines. */
+function drawHeader(doc: Doc, h: { title: string; subtitle?: string; unitLine: string; generated: string }) {
+  doc.setFillColor(...MUSTARD);
+  doc.rect(0, 0, PAGE_W, 36, 'F');
+  doc.setTextColor(...INK);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(24);
+  doc.text(pdfSafe(h.title), MARGIN, 14, { maxWidth: PAGE_W - 2 * MARGIN });
+  doc.setFont('helvetica', 'normal');
+  let y = 21.5;
+  if (h.subtitle) {
+    doc.setFontSize(12);
+    doc.text(pdfSafe(h.subtitle), MARGIN, y);
+    y += 6;
+  }
+  doc.setFontSize(10);
+  doc.text(pdfSafe(h.unitLine), MARGIN, y);
+  doc.text(pdfSafe(h.generated), MARGIN, y + 5);
+}
+
+/** Draws one dog's report from the current page of `doc` (more pages follow if the tables run long). */
+function drawDogPage(doc: Doc, input: DogReportInput): void {
   const { dog, unitName, generatedBy, generatedAt, corrections } = input;
   const sessions = input.sessions.filter((s) => s.dog_id === dog.id);
   const mine = new Set(sessions.map((s) => s.id));
   const dogCorrections = corrections.filter((c) => mine.has(c.session_id));
   const isVoided = (s: Session) => latestCorrection(s.id, dogCorrections)?.void === true;
 
-  const doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait' });
-  doc.setProperties({ title: pdfSafe(`${dog.name} progress report`), creator: 'Imprint' });
-
-  // Header band
-  doc.setFillColor(...MUSTARD);
-  doc.rect(0, 0, PAGE_W, 36, 'F');
-  doc.setTextColor(...INK);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(24);
-  doc.text(pdfSafe(dog.name), MARGIN, 16, { maxWidth: PAGE_W - 2 * MARGIN });
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(12);
-  doc.text(pdfSafe(unitName), MARGIN, 24);
-  doc.setFontSize(10);
-  doc.text(pdfSafe(`Generated ${formatDay(localDate(generatedAt))} by ${generatedBy}`), MARGIN, 30);
+  drawHeader(doc, {
+    title: dog.name,
+    subtitle: `${breedLabel(dog.breed)} \u00b7 ${purposeLabel(dog.purpose)}`,
+    unitLine: input.teamName ? `${unitName} \u00b7 ${input.teamName}` : unitName,
+    generated: generatedLine(generatedAt, generatedBy),
+  });
 
   let y = 48;
   const table = (heading: string, list: Odour[]) => {
@@ -154,5 +232,4 @@ export async function dogReportPdf(input: DogReportInput): Promise<Blob> {
   doc.setFontSize(8);
   doc.text(`Imprinted = ${formatMinSec(IMPRINT_TARGET_S)} on one odour. Totals include corrections; voided sessions count as 0:00.`, MARGIN, y + 6);
 
-  return doc.output('blob');
 }

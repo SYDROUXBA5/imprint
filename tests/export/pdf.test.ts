@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import type { Correction, Dog, Session } from '../../src/domain/types';
-import { dogReportPdf, pdfSafe } from '../../src/export/pdf';
-import { CATEGORIES, ODOURS, dogRow } from '../fixtures';
+import { dogReportPdf, pdfSafe, teamReportPdf } from '../../src/export/pdf';
+import { CATEGORIES, ODOURS, dogRow, pick, team } from '../fixtures';
 
 const rex: Dog = dogRow('d1', 'Rex');
 /** The 17 narcotics and explosives: what the report listed before the catalogue moved into the database. */
@@ -121,6 +121,126 @@ describe('dogReportPdf', () => {
   it('copes with names that the PDF font cannot draw', async () => {
     const blob = await dogReportPdf(input({ dog: { ...rex, name: 'Łukasz 日本犬' }, generatedBy: 'Zoë ✓' }));
     expect((await text(blob)).startsWith('%PDF')).toBe(true);
+  });
+});
+
+describe('dogReportPdf header (spec 13.6)', () => {
+  it('shows the breed and the purpose under the dog name', async () => {
+    const pdf = await text(await dogReportPdf(input({ dog: dogRow('d1', 'Rex', { breed: 'malinois', purpose: 'dual' }) })));
+    expect(pdf).toContain('(Malinois \u00b7 Dual purpose)');
+    const other = await text(await dogReportPdf(input({ dog: dogRow('d1', 'Rex', { breed: 'german-shepherd', purpose: 'single' }) })));
+    expect(other).toContain('(German Shepherd \u00b7 Single purpose)');
+  });
+
+  it('names the team after the unit when it is given one', async () => {
+    expect(await text(await dogReportPdf(input({ teamName: 'Alpha' })))).toContain('(Border K9 \u00b7 Alpha)');
+    expect(await text(await dogReportPdf(input()))).toContain('(Border K9)');
+  });
+});
+
+describe('teamReportPdf (spec 13.6)', () => {
+  const alpha = team('t1', 'Alpha');
+  const rexT = dogRow('d1', 'Rex', { breed: 'malinois', purpose: 'dual' });
+  const bellaT = dogRow('d2', 'Bella', { breed: 'labrador', purpose: 'single' });
+  const lunaT = dogRow('d3', 'Luna', { breed: 'german-shepherd', purpose: 'dual' });
+  const oldMax = dogRow('d4', 'Old Max', { archived_at: '2026-10-02T00:00:00Z' });
+  const fly = dogRow('d5', 'Fly', { team_id: 't2' });
+  const SESS: Session[] = [
+    manual('a', 'cocaine', '2026-10-01', 4500, 'd1'), // Rex: 75:00 on cocaine
+    manual('b', 'mdma', '2026-10-02', 600, 'd2'), // Bella: 10:00 on MDMA
+    manual('c', 'tnt', '2026-10-02', 777, 'd4'), // archived dog: left out
+    manual('d', 'tnt', '2026-10-02', 888, 'd5'), // another team's dog: left out
+  ];
+  const teamInput = (over: Partial<Parameters<typeof teamReportPdf>[0]> = {}) => ({
+    team: alpha, unitName: 'Border K9', generatedBy: 'Tess', generatedAt: new Date(2026, 9, 9, 14, 30),
+    dogs: [rexT, bellaT, lunaT, oldMax, fly], sessions: SESS, corrections: [] as Correction[],
+    categories: CATEGORIES, odours: ODOURS,
+    // The team trains on cocaine and MDMA (narcotics) and TNT (explosives) only.
+    teamOdours: [pick('t1', 'cocaine'), pick('t1', 'mdma'), pick('t1', 'tnt')], ...over,
+  });
+  const pages = (pdf: string) => pdf.match(/\/Type \/Page\b(?!s)/g)?.length ?? 0;
+  const count = (pdf: string, needle: string) => pdf.split(needle).length - 1;
+
+  it('returns an A4 portrait PDF', async () => {
+    const blob = await teamReportPdf(teamInput());
+    expect(blob.type).toBe('application/pdf');
+    const pdf = await text(blob);
+    expect(pdf.startsWith('%PDF')).toBe(true);
+    expect(pdf).toMatch(/\/MediaBox \[0 0 595\.2\d* 841\.8\d*\]/);
+  });
+
+  it('has one page per active dog of the team, and none for an archived dog or another team\'s dog', async () => {
+    const pdf = await text(await teamReportPdf(teamInput()));
+    expect(pages(pdf)).toBe(3);
+    for (const name of ['Rex', 'Bella', 'Luna']) expect(pdf).toContain(`(${name})`);
+    expect(pdf).not.toContain('(Old Max)');
+    expect(pdf).not.toContain('(Fly)');
+  });
+
+  it('puts the dogs in name order, each with its own totals', async () => {
+    const pdf = await text(await teamReportPdf(teamInput()));
+    const at = (needle: string) => pdf.indexOf(needle);
+    expect(at('(Bella)')).toBeLessThan(at('(10:00)'));
+    expect(at('(10:00)')).toBeLessThan(at('(Luna)'));
+    expect(at('(Luna)')).toBeLessThan(at('(Rex)'));
+    expect(at('(Rex)')).toBeLessThan(at('(75:00)'));
+    expect(count(pdf, '(75:00)')).toBe(1);
+    expect(pdf).not.toContain('(12:57)'); // the archived dog's 777 s
+    expect(pdf).not.toContain('(14:48)'); // the other team's dog's 888 s
+  });
+
+  it('shows each dog\'s breed and purpose, and the unit and team, in the page header', async () => {
+    const pdf = await text(await teamReportPdf(teamInput()));
+    expect(pdf).toContain('(Malinois \u00b7 Dual purpose)');
+    expect(pdf).toContain('(Labrador \u00b7 Single purpose)');
+    expect(pdf).toContain('(German Shepherd \u00b7 Dual purpose)');
+    expect(count(pdf, '(Border K9 \u00b7 Alpha)')).toBe(3);
+    expect(count(pdf, '(Generated 9 Oct 2026 by Tess)')).toBe(3);
+  });
+
+  it('lists the team\'s categories as sections, and only the odours the team trains on', async () => {
+    const pdf = await text(await teamReportPdf(teamInput()));
+    expect(count(pdf, '(Narcotics)')).toBe(3);
+    expect(count(pdf, '(Explosives)')).toBe(3);
+    for (const name of ['Cocaine', 'MDMA', 'TNT']) expect(count(pdf, `(${name})`), name).toBe(3);
+    for (const absent of ['Heroin', 'Cannabis', 'C4/RDX', 'Cadaver', 'Bed bugs']) expect(pdf, absent).not.toContain(`(${absent})`);
+  });
+
+  it('also lists an odour the dog has time on that the team no longer trains, on that dog\'s page only', async () => {
+    const withExtra = [...SESS, manual('e', 'human-remains', '2026-10-03', 300, 'd3')];
+    const pdf = await text(await teamReportPdf(teamInput({ sessions: withExtra })));
+    expect(count(pdf, '(Human remains)')).toBe(1);
+    expect(count(pdf, '(Cadaver)')).toBe(1);
+    expect(pages(pdf)).toBe(3);
+  });
+
+  it('leaves out an odour the team has ticked if it has been archived', async () => {
+    const odours = ODOURS.map((o) => (o.id === 'tnt' ? { ...o, archived_at: '2026-10-05T00:00:00Z' } : o));
+    const pdf = await text(await teamReportPdf(teamInput({ odours })));
+    expect(pdf).not.toContain('(TNT)');
+    expect(pdf).not.toContain('(Explosives)');
+  });
+
+  it('counts each dog\'s manual sessions and corrections on its own page', async () => {
+    const corrections = [fix('c1', 'b', { new_duration_s: 540 })];
+    const pdf = await text(await teamReportPdf(teamInput({ corrections })));
+    expect(count(pdf, '(Manual sessions: 1)')).toBe(2); // Rex and Bella
+    expect(count(pdf, '(Manual sessions: 0)')).toBe(1); // Luna
+    expect(count(pdf, '(Corrections: 1)')).toBe(1);
+    expect(count(pdf, '(Corrections: 0)')).toBe(2);
+    expect(pdf).toContain('(9:00)'); // Bella's corrected MDMA
+  });
+
+  it('says so, on one page, when the team has no active dog', async () => {
+    const pdf = await text(await teamReportPdf(teamInput({ dogs: [oldMax, fly] })));
+    expect(pages(pdf)).toBe(1);
+    expect(pdf).toContain('(Alpha)');
+    expect(pdf).toContain('(No active dogs in this team.)');
+  });
+
+  it('copes with names the PDF font cannot draw', async () => {
+    const pdf = await text(await teamReportPdf(teamInput({ team: team('t1', 'Łódź 日本'), dogs: [dogRow('d1', 'Łukasz 日本犬')] })));
+    expect(pdf.startsWith('%PDF')).toBe(true);
   });
 });
 

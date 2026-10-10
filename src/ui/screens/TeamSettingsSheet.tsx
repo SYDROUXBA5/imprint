@@ -2,8 +2,10 @@ import { useState, type FormEvent } from 'react';
 import { db } from '../../data/db';
 import { archiveTeam, renameTeam, setTeamOdours } from '../../data/teams';
 import { selectedOdourIds } from '../../domain/odours';
+import { exportTeamCsv, exportTeamReport } from '../../export/run';
 import type { Catalogue, Team } from '../../domain/types';
 import { useMe } from '../../hooks/useMe';
+import { ExportButton, UnsyncedNote } from '../components/ExportButton';
 import { OdourPicker } from '../components/OdourPicker';
 import { Sheet } from '../components/Sheet';
 import { plural, stickyFooter } from '../shared';
@@ -21,7 +23,8 @@ type View = 'main' | 'odours' | 'archive';
 const TITLES: Record<View, string> = { main: 'Team settings', odours: 'Team odours', archive: 'Archive team' };
 
 /**
- * A team's settings (spec §13.1): rename, which odours it trains on, archive (after asking). Trainers only.
+ * A team's settings (spec §13.1): rename, which odours it trains on, the team reports (§13.6), archive (after
+ * asking). Trainers only; the report buttons also check the role themselves.
  * One sheet with three views, so there is never a sheet on top of a sheet.
  */
 export function TeamSettingsSheet({ open, onClose, team, catalogue, timerRunning }: TeamSettingsSheetProps) {
@@ -148,6 +151,17 @@ function Body({ team, catalogue, timerRunning, view, setView, onClose }: BodyPro
         <span className="num" style={{ fontWeight: 800 }}>{`${plural(savedCount, 'odour')} selected`}</span>
         <button type="button" className="btn" onClick={() => { setError(''); setView('odours'); }}>Choose odours</button>
       </div>
+
+      {me?.role === 'trainer' && (
+        <>
+          <p className="label">Reports</p>
+          <UnsyncedNote />
+          <div style={{ display: 'grid', gap: 8 }}>
+            <ExportButton note={false} label="Team report (PDF)" run={() => exportTeamReport(db, me, team.id)} />
+            <ExportButton note={false} label="Team sessions (CSV)" run={() => exportTeamCsv(db, team.id)} />
+          </div>
+        </>
+      )}
 
       {error && <p role="alert" className="error">{error}</p>}
       <button type="button" className="btn" onClick={askToArchive}

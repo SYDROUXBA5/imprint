@@ -7,7 +7,7 @@ import type { ExportDone } from '../../export/run';
 const NO_SYNC = { pending: 0, rejected: 0, stale: false };
 
 /** Records that have not reached the server yet. They are on this phone, so they are in the export. */
-function UnsyncedNote() {
+export function UnsyncedNote() {
   const sync = useLiveQuery(() => syncStatus(db), [], NO_SYNC);
   const n = sync.pending + sync.rejected;
   if (n === 0) return null;
@@ -23,8 +23,12 @@ function UnsyncedNote() {
   );
 }
 
-/** Makes a file on the phone and hands it to the share sheet (or downloads it). Trainer screens only. */
-export function ExportButton({ label, run }: { label: string; run: () => Promise<ExportDone> }) {
+/**
+ * Makes a file on the phone and hands it to the share sheet (or downloads it). Trainer screens only.
+ * Each button warns about unsynced items above itself; where several sit together, pass `note={false}` to
+ * all of them and put one <UnsyncedNote /> above the group.
+ */
+export function ExportButton({ label, run, note = true }: { label: string; run: () => Promise<ExportDone>; note?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
@@ -45,7 +49,7 @@ export function ExportButton({ label, run }: { label: string; run: () => Promise
 
   return (
     <div>
-      <UnsyncedNote />
+      {note && <UnsyncedNote />}
       <button type="button" className="btn" style={{ width: '100%' }} disabled={busy} onClick={click}>
         {busy ? 'Preparing…' : label}
       </button>

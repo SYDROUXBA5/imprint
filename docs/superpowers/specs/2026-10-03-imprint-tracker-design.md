@@ -357,7 +357,7 @@ Security, not only by hiding buttons.
 ### 13.6 Reports
 - **Team PDF** (`imprint-<team>-<yyyy-mm-dd>.pdf`): one page per active dog in the team, the §8a dog page with breed and purpose in the header and the team's categories as sections.
 - **Team CSV**: the §8a CSV limited to that team.
-- The all-sessions CSV and both team files gain columns: team, breed, purpose, category.
+- The all-sessions CSV and the team CSV gain columns: team, breed, purpose (written out, e.g. "Dual purpose"), and category, which takes over from the old `group` column (it already held the category name). The dog PDF's header also shows breed and purpose, and the team after the unit.
 - Buttons live on the team's settings sheet (trainer only).
 
 ### 13.7 Sync

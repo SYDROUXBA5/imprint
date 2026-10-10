@@ -1,11 +1,12 @@
+import { breedLabel, purposeLabel } from '../domain/breeds';
 import { needsClockCheck, overlappingSessionIds } from '../domain/flags';
 import { formatMinSec } from '../domain/format';
 import { odourById } from '../domain/odours';
 import { currentDuration, latestCorrection } from '../domain/totals';
-import type { Correction, Dog, Member, Odour, OdourCategory, Session } from '../domain/types';
+import type { Correction, Dog, Member, Odour, OdourCategory, Session, Team } from '../domain/types';
 
 export const CSV_HEADER = [
-  'dog', 'dog archived', 'group', 'odour', 'handler', 'kind', 'date', 'start', 'end',
+  'dog', 'dog archived', 'team', 'breed', 'purpose', 'category', 'odour', 'handler', 'kind', 'date', 'start', 'end',
   'recorded duration (mm:ss)', 'recorded duration (s)', 'current duration (mm:ss)', 'current duration (s)',
   'voided', 'correction reasons', 'flags',
 ] as const;
@@ -13,6 +14,8 @@ export const CSV_HEADER = [
 export interface CsvInput {
   /** Every dog, archived ones too. */
   dogs: Dog[];
+  /** Names each dog's team; a dog whose team is missing gets a blank. */
+  teams: Team[];
   members: Member[];
   sessions: Session[];
   corrections: Correction[];
@@ -44,11 +47,13 @@ function cell(value: string, userText = false): string {
 }
 
 /**
- * One row per session, archived dogs and voided sessions included. UTF-8 with a byte order mark so
+ * One row per session, archived dogs and voided sessions included. Hand it every dog for the whole unit, or
+ * only one team's dogs and their sessions for a team file; the columns are the same either way. UTF-8 with a byte order mark so
  * Excel shows accents; CRLF line ends. Rows run by dog name, then oldest first.
  */
-export function sessionsCsv({ dogs, members, sessions, corrections, odours, categories, nowMs }: CsvInput): string {
+export function sessionsCsv({ dogs, teams, members, sessions, corrections, odours, categories, nowMs }: CsvInput): string {
   const dogById = new Map(dogs.map((d) => [d.id, d]));
+  const teamName = new Map(teams.map((t) => [t.id, t.name]));
   const memberName = new Map(members.map((m) => [m.id, m.name]));
   const categoryName = new Map(categories.map((c) => [c.id, c.name]));
   const isVoided = (s: Session) => latestCorrection(s.id, corrections)?.void === true;
@@ -71,6 +76,9 @@ export function sessionsCsv({ dogs, members, sessions, corrections, odours, cate
     return [
       cell(dog?.name ?? '', true),
       dog?.archived_at ? 'yes' : 'no',
+      cell(dog ? (teamName.get(dog.team_id) ?? '') : '', true),
+      dog ? breedLabel(dog.breed) : '',
+      dog ? purposeLabel(dog.purpose) : '',
       cell(odour ? (categoryName.get(odour.category_id) ?? '') : '', true),
       cell(odour?.name ?? s.odour_id, true),
       cell(memberName.get(s.handler_id) ?? 'Unknown', true),

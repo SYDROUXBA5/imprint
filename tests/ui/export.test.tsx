@@ -82,9 +82,9 @@ describe('Members screen: CSV export', () => {
     expect(blob.type).toBe('text/csv;charset=utf-8');
     expect(await firstBytes(blob, 3)).toEqual([0xef, 0xbb, 0xbf]); // UTF-8 byte order mark, so Excel shows accents
     const csv = await readBlob(blob); // reading as text drops the mark
-    expect(csv).toContain('dog,dog archived,group,odour,handler,kind,date');
-    expect(csv).toContain('Rex,no,Narcotics,MDMA,Paul,manual,2026-10-03,,,10:00,600,5:00,300,no,Stopped late,');
-    expect(csv).toContain('Bella,yes,Explosives,TNT,Paul,manual,2026-10-03,,,15:00,900,15:00,900,no,,');
+    expect(csv).toContain('dog,dog archived,team,breed,purpose,category,odour,handler,kind,date');
+    expect(csv).toContain('Rex,no,Alpha,Labrador,Single purpose,Narcotics,MDMA,Paul,manual,2026-10-03,,,10:00,600,5:00,300,no,Stopped late,');
+    expect(csv).toContain('Bella,yes,Alpha,Labrador,Single purpose,Explosives,TNT,Paul,manual,2026-10-03,,,15:00,900,15:00,900,no,,');
   });
 
   it('says where a plain download went, and says nothing when the share sheet was closed', async () => {
