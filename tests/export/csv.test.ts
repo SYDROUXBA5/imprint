@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Correction, Dog, Member, Session } from '../../src/domain/types';
 import { CSV_HEADER, sessionsCsv } from '../../src/export/csv';
+import { CATEGORIES, ODOURS, dogRow } from '../fixtures';
 
 const member = (id: string, name: string, role: Member['role'] = 'handler'): Member => ({
   id, unit_id: 'u1', user_id: `u-${id}`, name, role, joined_at: '', removed_at: null,
@@ -8,9 +9,7 @@ const member = (id: string, name: string, role: Member['role'] = 'handler'): Mem
 const tess = member('mT', 'Tess', 'trainer');
 const hana = member('mA', 'Hana');
 const paul = member('mP', 'Paul');
-const dog = (id: string, name: string, archived: string | null = null): Dog => ({
-  id, unit_id: 'u1', name, created_by: 'mT', created_at: '2026-10-01T00:00:00Z', archived_at: archived,
-});
+const dog = (id: string, name: string, archived: string | null = null): Dog => dogRow(id, name, { archived_at: archived });
 const rex = dog('d1', 'Rex');
 const bella = dog('d2', 'Bella', '2026-10-06T00:00:00Z');
 
@@ -49,7 +48,7 @@ function parseCsv(text: string): string[][] {
 }
 const NOW = Date.parse('2026-10-09T12:00:00Z');
 const build = (sessions: Session[], corrections: Correction[] = [], dogs: Dog[] = [rex, bella], members: Member[] = [tess, hana, paul]) =>
-  sessionsCsv({ dogs, members, sessions, corrections, nowMs: NOW });
+  sessionsCsv({ dogs, members, sessions, corrections, odours: ODOURS, categories: CATEGORIES, nowMs: NOW });
 const body = (csv: string) => parseCsv(csv.slice(1)).slice(1);
 const col = (name: (typeof CSV_HEADER)[number]) => CSV_HEADER.indexOf(name);
 
@@ -219,6 +218,22 @@ describe('sessionsCsv', () => {
       expect(row[col('handler')]).toBe('\'=HYPERLINK("http://x")');
       expect(row[col('correction reasons')]).toBe("'+1 minute");
     });
+  });
+
+  it('names an odour and its category from the catalogue given, custom and archived ones too', () => {
+    const categories = [...CATEGORIES, { id: 'currency', unit_id: 'u1', name: 'Currency, cash', sort: 5, created_at: '', archived_at: null }];
+    const odours = [
+      ...ODOURS.map((o) => (o.id === 'tnt' ? { ...o, archived_at: '2026-10-05T00:00:00Z' } : o)),
+      { id: 'notes', unit_id: 'u1', category_id: 'currency', name: 'Banknotes', created_at: '', archived_at: null },
+    ];
+    const csv = sessionsCsv({
+      dogs: [rex], members: [hana], corrections: [], odours, categories, nowMs: NOW,
+      sessions: [manual('a', 'notes', hana, '2026-10-03', 60), manual('b', 'tnt', hana, '2026-10-04', 60), manual('c', 'human-remains', hana, '2026-10-05', 60)],
+    });
+    const rows = body(csv);
+    expect(rows.map((r) => [r[col('group')], r[col('odour')]])).toEqual([
+      ['Currency, cash', 'Banknotes'], ['Explosives', 'TNT'], ['Cadaver', 'Human remains'],
+    ]);
   });
 
   it('names a handler who is not in the list "Unknown" and an unlisted odour by its id', () => {

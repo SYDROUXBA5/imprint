@@ -3,7 +3,7 @@ import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-route
 import { db } from '../../data/db';
 import { AlreadyRunningError, startSession, stopSession } from '../../data/repo';
 import { formatClock, formatMinutesOfTarget } from '../../domain/format';
-import { odourById } from '../../domain/odours';
+import { odourById, odourName } from '../../domain/odours';
 import { IMPRINT_TARGET_S, isRunning, liveElapsed, odourTotal } from '../../domain/totals';
 import type { Session } from '../../domain/types';
 import { useCrossedTarget } from '../../hooks/useCrossedTarget';
@@ -17,7 +17,7 @@ import { ManualEntrySheet } from './ManualEntrySheet';
 export function TimerScreen() {
   const { dogId = '', odourId = '' } = useParams();
   const me = useMe();
-  const { dogs, members, sessions, corrections, loading } = useUnitData();
+  const { dogs, members, sessions, corrections, odours, loading } = useUnitData();
   const navigate = useNavigate();
   const location = useLocation();
   const [busy, setBusy] = useState(false);
@@ -26,7 +26,7 @@ export function TimerScreen() {
   const [manualOpen, setManualOpen] = useState(false);
 
   const dog = dogs.find((d) => d.id === dogId);
-  const odour = odourById(odourId);
+  const odour = odourById(odours, odourId);
   // One timer per dog at a time, whatever the odour: that session decides what this screen offers.
   const runningOnDog = useMemo(
     () => sessions.find((s) => s.dog_id === dogId && isRunning(s, corrections)),
@@ -45,7 +45,7 @@ export function TimerScreen() {
   const nameOf = (id: string) => members.find((m) => m.id === id)?.name ?? 'Someone';
   const alreadyRunning = (s: Session) =>
     `${s.handler_id === me.id ? 'You are' : `${nameOf(s.handler_id)} is`} already running ` +
-    `${odourById(s.odour_id)?.name ?? s.odour_id} on ${dog.name}.`;
+    `${odourName(odours, s.odour_id)} on ${dog.name}.`;
 
   const canStop = !!runningHere && runningHere.handler_id === me.id; // only the handler who started it can stop it
   const blocked = !!runningOnDog && !canStop;
@@ -53,7 +53,7 @@ export function TimerScreen() {
   const ctx = { db, me };
 
   const back = () =>
-    location.key !== 'default' ? navigate(-1) : navigate(`/dog/${dog.id}?group=${odour.group}`, { replace: true });
+    location.key !== 'default' ? navigate(-1) : navigate(`/dog/${dog.id}?cat=${odour.category_id}`, { replace: true });
 
   async function start() {
     setBusy(true);
@@ -131,7 +131,7 @@ export function TimerScreen() {
             <p style={{ margin: 0, fontWeight: 800 }}>{alreadyRunning(runningOnDog)}</p>
             {runningOnDog.handler_id === me.id && !runningHere && (
               <Link to={`/dog/${dog.id}/timer/${runningOnDog.odour_id}`} style={{ fontWeight: 800 }}>
-                {`Open the ${odourById(runningOnDog.odour_id)?.name ?? 'running'} timer`}
+                {`Open the ${odourById(odours, runningOnDog.odour_id)?.name ?? 'running'} timer`}
               </Link>
             )}
           </div>

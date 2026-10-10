@@ -2,8 +2,11 @@
 import { describe, expect, it } from 'vitest';
 import type { Correction, Dog, Session } from '../../src/domain/types';
 import { dogReportPdf, pdfSafe } from '../../src/export/pdf';
+import { CATEGORIES, ODOURS, dogRow } from '../fixtures';
 
-const rex: Dog = { id: 'd1', unit_id: 'u1', name: 'Rex', created_by: 'mT', created_at: '2026-10-01T00:00:00Z', archived_at: null };
+const rex: Dog = dogRow('d1', 'Rex');
+/** The 17 narcotics and explosives: what the report listed before the catalogue moved into the database. */
+const LISTED = ODOURS.filter((o) => o.category_id === 'narcotics' || o.category_id === 'explosives');
 const manual = (id: string, odour: string, date: string, seconds: number, dogId = 'd1'): Session => ({
   id, unit_id: 'u1', dog_id: dogId, odour_id: odour, handler_id: 'mA', kind: 'manual', session_date: date,
   started_at: null, ended_at: null, duration_s: seconds, client_clock_offset_s: null, server_received_at: null,
@@ -28,7 +31,7 @@ const CORRECTIONS: Correction[] = [fix('c1', 'e', { void: true, reason: 'Wrong d
 
 const input = (over: Partial<Parameters<typeof dogReportPdf>[0]> = {}) => ({
   dog: rex, unitName: 'Border K9', generatedBy: 'Tess', generatedAt: new Date(2026, 9, 9, 14, 30),
-  sessions: SESSIONS, corrections: CORRECTIONS, ...over,
+  sessions: SESSIONS, corrections: CORRECTIONS, categories: CATEGORIES, odours: LISTED, ...over,
 });
 const text = async (blob: Blob) => Buffer.from(await blob.arrayBuffer()).toString('latin1');
 
@@ -63,6 +66,28 @@ describe('dogReportPdf', () => {
       expect(pdf, name).toContain(`(${name})`);
     }
     for (const head of ['Odour', 'Total', 'Progress', 'Imprinted', 'Sessions']) expect(pdf).toContain(`(${head})`);
+  });
+
+  it('has one table per category that has odours to list, named as in the catalogue, in catalogue order', async () => {
+    const odours = [...LISTED.filter((o) => o.id === 'mdma'), ...ODOURS.filter((o) => o.category_id === 'bed-bugs'),
+      { id: 'notes', unit_id: 'u1', category_id: 'currency', name: 'Banknotes', created_at: '', archived_at: null }];
+    const categories = [...CATEGORIES, { id: 'currency', unit_id: 'u1', name: 'Currency', sort: 5, created_at: '', archived_at: null }];
+    const pdf = await text(await dogReportPdf(input({ odours, categories })));
+    for (const heading of ['Narcotics', 'Bed bugs', 'Currency']) expect(pdf).toContain(`(${heading})`);
+    for (const absent of ['Explosives', 'Cadaver']) expect(pdf).not.toContain(`(${absent})`);
+    for (const name of ['MDMA', 'Live bed bugs', 'Viable eggs', 'Banknotes']) expect(pdf).toContain(`(${name})`);
+    expect(pdf.indexOf('(Narcotics)')).toBeLessThan(pdf.indexOf('(Bed bugs)'));
+    expect(pdf.indexOf('(Bed bugs)')).toBeLessThan(pdf.indexOf('(Currency)'));
+  });
+
+  it('carries on over a second page when there are too many odours for one', async () => {
+    const many = Array.from({ length: 40 }, (_, i) => ({
+      id: `x${i}`, unit_id: 'u1', category_id: 'narcotics', name: `Odour ${i}`, created_at: '', archived_at: null,
+    }));
+    const pdf = await text(await dogReportPdf(input({ odours: many })));
+    expect(pdf.match(/\/Type \/Page\b(?!s)/g)).toHaveLength(2); // 27 rows fit under the heading, the other 13 follow
+    expect(pdf).toContain('(Odour 39)');
+    expect(pdf).toContain('(Manual sessions: 2)'); // the footer still comes last
   });
 
   it('shows totals as mm:ss after corrections, the imprint date, and the session count', async () => {

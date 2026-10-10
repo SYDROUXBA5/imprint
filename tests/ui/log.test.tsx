@@ -4,12 +4,13 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, ME_KEY } from '../../src/data/db';
 import type { Correction, Dog, Member, Session } from '../../src/domain/types';
+import { dogRow, seedCatalogue } from '../fixtures';
 import { LogScreen } from '../../src/ui/screens/LogScreen';
 
 const tess: Member = { id: 'mT', unit_id: 'u1', user_id: 'uT', name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
 const hana: Member = { id: 'mA', unit_id: 'u1', user_id: 'uA', name: 'Hana', role: 'handler', joined_at: '', removed_at: null };
 const paul: Member = { id: 'mP', unit_id: 'u1', user_id: 'uP', name: 'Paul', role: 'handler', joined_at: '', removed_at: null };
-const rex: Dog = { id: 'd1', unit_id: 'u1', name: 'Rex', created_by: 'mT', created_at: '2026-10-01T00:00:00Z', archived_at: null };
+const rex: Dog = dogRow('d1', 'Rex');
 const bella: Dog = { ...rex, id: 'd2', name: 'Bella' };
 
 const base = {
@@ -46,6 +47,7 @@ const CORRECTIONS: Correction[] = [
 async function seed(me: Member, sessions = SESSIONS, corrections = CORRECTIONS) {
   await db.meta.put({ key: ME_KEY, value: me });
   await db.members.bulkPut([tess, hana, paul]);
+  await seedCatalogue(db);
   await db.dogs.bulkPut([rex, bella]);
   await db.sessions.bulkPut(sessions);
   await db.corrections.bulkPut(corrections);

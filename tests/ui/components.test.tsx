@@ -31,13 +31,24 @@ describe('components', () => {
     expect(screen.getByText('12:04')).toBeInTheDocument();
   });
 
-  it('PillToggle switches group and reports the selected one with aria-pressed', async () => {
+  it('PillToggle switches category and reports the selected one with aria-pressed', async () => {
     const onChange = vi.fn();
-    render(<PillToggle value="narcotics" onChange={onChange} />);
+    const options = [{ value: 'narcotics', label: 'Narcotics' }, { value: 'explosives', label: 'Explosives' }];
+    render(<PillToggle value="narcotics" options={options} onChange={onChange} />);
     expect(screen.getByRole('button', { name: 'Narcotics' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Explosives' })).toHaveAttribute('aria-pressed', 'false');
     await userEvent.click(screen.getByRole('button', { name: 'Explosives' }));
     expect(onChange).toHaveBeenCalledWith('explosives');
+  });
+
+  it('PillToggle scrolls sideways with more than three options, and does not with three or fewer', () => {
+    const four = ['a', 'b', 'c', 'd'].map((v) => ({ value: v, label: v.toUpperCase() }));
+    const { unmount } = render(<PillToggle value="a" options={four} onChange={() => {}} />);
+    expect(screen.getAllByRole('button')).toHaveLength(4);
+    expect(screen.getByRole('group', { name: 'Odour category' })).toHaveStyle({ overflowX: 'auto' });
+    unmount();
+    render(<PillToggle value="a" options={four.slice(0, 3)} onChange={() => {}} />);
+    expect(screen.getByRole('group', { name: 'Odour category' })).toHaveStyle({ overflowX: 'hidden' });
   });
 
   it('Monogram shows the first letter, upper-cased', () => {

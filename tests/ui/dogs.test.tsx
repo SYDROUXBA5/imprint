@@ -4,12 +4,12 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, ME_KEY } from '../../src/data/db';
 import type { Dog, Member, Session } from '../../src/domain/types';
+import { dogRow, seedCatalogue, team } from '../fixtures';
 import { DogsScreen } from '../../src/ui/screens/DogsScreen';
 
 const trainer: Member = { id: 'mT', unit_id: 'u1', user_id: 'uT', name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
 const handler: Member = { id: 'mH', unit_id: 'u1', user_id: 'uH', name: 'Paul', role: 'handler', joined_at: '', removed_at: null };
-const dog = (id: string, name: string, archived: string | null = null): Dog =>
-  ({ id, unit_id: 'u1', name, created_by: 'mT', created_at: '2026-10-01T00:00:00Z', archived_at: archived });
+const dog = (id: string, name: string, archived: string | null = null): Dog => dogRow(id, name, { archived_at: archived });
 const manual = (id: string, dogId: string, odour: string, date: string, minutes: number): Session => ({
   id, unit_id: 'u1', dog_id: dogId, odour_id: odour, handler_id: 'mH', kind: 'manual', session_date: date,
   started_at: null, ended_at: null, duration_s: minutes * 60, client_clock_offset_s: null, server_received_at: null,
@@ -18,6 +18,7 @@ const manual = (id: string, dogId: string, odour: string, date: string, minutes:
 async function seed(me: Member) {
   await db.meta.put({ key: ME_KEY, value: me });
   await db.members.bulkPut([trainer, handler]);
+  await seedCatalogue(db);
   await db.dogs.bulkPut([dog('d1', 'Rex'), dog('d2', 'Bella'), dog('d3', 'Old Max', '2026-10-02T00:00:00Z')]);
   await db.sessions.bulkPut([
     manual('s1', 'd1', 'cocaine', '2026-10-01', 75),
@@ -106,6 +107,51 @@ describe('DogsScreen', () => {
     expect(await screen.findByRole('button', { name: /Ziggy/ })).toBeInTheDocument();
     expect(screen.queryByRole('dialog')).toBeNull();
     expect((await db.outbox.toArray()).map((i) => `${i.table}:${i.op}`)).toEqual(['dogs:insert']);
+  });
+
+  it('lists the dogs of every active team, and none of an archived team', async () => {
+    await seed(trainer);
+    await db.teams.bulkPut([team('t2', 'Bravo'), team('t3', 'Retired', '2026-10-05T00:00:00Z')]);
+    await db.dogs.bulkPut([dogRow('d4', 'Fly', { team_id: 't2' }), dogRow('d5', 'Hidden', { team_id: 't3' })]);
+    renderDogs();
+    await screen.findByRole('button', { name: /Rex/ });
+    const names = screen.getAllByRole('listitem').map((li) => within(li).getByRole('button').textContent);
+    expect(names).toHaveLength(3);
+    expect(names.join('|')).toMatch(/Bella.*Fly.*Rex/);
+    expect(screen.queryByText('Hidden')).toBeNull();
+  });
+
+  it('names the odours of a progress line and a running timer from the catalogue', async () => {
+    await seed(trainer);
+    await db.odours.update('mdma', { name: 'Ecstasy' });
+    renderDogs();
+    expect(await screen.findByText('Ecstasy 42/75 · Cocaine ✓')).toBeInTheDocument();
+  });
+
+  it('puts a new dog in the first active team, as breed "other" and single purpose, until the team screens exist', async () => {
+    await seed(trainer);
+    await db.teams.put(team('t0', 'Aardvark'));
+    renderDogs();
+    await userEvent.click(await screen.findByRole('button', { name: '+ Add dog' }));
+    await userEvent.type(screen.getByLabelText('Dog name'), 'Ziggy');
+    await userEvent.click(screen.getByRole('button', { name: 'Add dog' }));
+    await screen.findByRole('button', { name: /Ziggy/ });
+    expect(await db.dogs.filter((d) => d.name === 'Ziggy').first()).toMatchObject({ team_id: 't0', breed: 'other', purpose: 'single' });
+  });
+
+  it('makes a first team that trains on the whole catalogue when the unit has none', async () => {
+    await seedCatalogue(db, []);
+    await db.meta.put({ key: ME_KEY, value: trainer });
+    renderDogs();
+    await userEvent.click(await screen.findByRole('button', { name: '+ Add dog' }));
+    await userEvent.type(screen.getByLabelText('Dog name'), 'Ziggy');
+    await userEvent.click(screen.getByRole('button', { name: 'Add dog' }));
+    expect(await screen.findByRole('button', { name: /Ziggy/ })).toBeInTheDocument();
+    const [made] = await db.teams.toArray();
+    expect(made.name).toBe('My team');
+    expect(await db.team_odours.where('team_id').equals(made.id).count()).toBe(20);
+    expect((await db.dogs.toArray())[0].team_id).toBe(made.id);
+    expect((await db.outbox.toArray()).map((i) => i.table)).toContain('teams');
   });
 
   it('shows the sync badge with the number of unsynced records', async () => {

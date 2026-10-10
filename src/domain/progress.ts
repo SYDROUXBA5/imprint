@@ -1,6 +1,6 @@
 import { formatMinutesOfTarget } from './format';
 import { odourById } from './odours';
-import type { Correction, Session } from './types';
+import type { Correction, Odour, Session } from './types';
 import { currentDuration, isImprinted, isRunning, odourTotal } from './totals';
 
 export interface TrainedOdour { odourId: string; name: string; totalS: number; lastKey: string }
@@ -10,7 +10,7 @@ export interface TrainedOdour { odourId: string; name: string; totalS: number; l
  * "Recently" is by day, then by start time within the day (manual entries have no start time).
  */
 export function trainedOdours(
-  dogId: string, sessions: Session[], corrections: Correction[], nowMs: number,
+  dogId: string, sessions: Session[], corrections: Correction[], odours: readonly Odour[], nowMs: number,
 ): TrainedOdour[] {
   const lastKeys = new Map<string, string>();
   const running = new Set<string>();
@@ -24,7 +24,7 @@ export function trainedOdours(
   }
   const out: TrainedOdour[] = [];
   for (const odourId of new Set([...lastKeys.keys(), ...running])) {
-    const odour = odourById(odourId);
+    const odour = odourById(odours, odourId);
     if (!odour) continue;
     const totalS = odourTotal(sessions, corrections, dogId, odourId, nowMs);
     if (totalS === 0 && !running.has(odourId)) continue;
@@ -34,8 +34,10 @@ export function trainedOdours(
 }
 
 /** e.g. "MDMA 42/75 · Cocaine ✓" */
-export function progressLine(dogId: string, sessions: Session[], corrections: Correction[], nowMs: number): string {
-  return trainedOdours(dogId, sessions, corrections, nowMs)
+export function progressLine(
+  dogId: string, sessions: Session[], corrections: Correction[], odours: readonly Odour[], nowMs: number,
+): string {
+  return trainedOdours(dogId, sessions, corrections, odours, nowMs)
     .map((o) => (isImprinted(o.totalS) ? `${o.name} ✓` : `${o.name} ${formatMinutesOfTarget(o.totalS)}`))
     .join(' · ');
 }

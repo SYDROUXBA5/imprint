@@ -39,7 +39,7 @@ afterEach(() => {
 
 const flush = () => new Promise((r) => setTimeout(r, 40)); // let Dexie/IDB settle
 const cycles = (n: number) => vi.waitFor(() => expect(changesSince).toHaveBeenCalledTimes(n * pullsPerCycle));
-const pullsPerCycle = 6; // units, members, dogs, sessions, corrections, deleted_dogs
+const pullsPerCycle = 11; // units, members, teams, odour_categories, odours, team_odours, dogs, sessions, corrections, deleted_teams, deleted_dogs
 const deps = () => ({ db, remote, unitId: 'u1' });
 
 describe('startSyncLoop', () => {
@@ -47,7 +47,9 @@ describe('startSyncLoop', () => {
     const f = fakeClient();
     const stop = startSyncLoop(deps(), f.client);
     expect(f.raw.channel).toHaveBeenCalledWith('unit-u1');
-    expect(f.handlers.map((h) => h.table).sort()).toEqual(['corrections', 'deleted_dogs', 'dogs', 'members', 'sessions']);
+    expect(f.handlers.map((h) => h.table).sort()).toEqual([
+      'corrections', 'deleted_dogs', 'deleted_teams', 'dogs', 'members', 'odour_categories', 'odours', 'sessions', 'team_odours', 'teams',
+    ]);
     expect(new Set(f.handlers.map((h) => h.filter))).toEqual(new Set(['unit_id=eq.u1']));
     expect(f.channel.subscribe).toHaveBeenCalledTimes(1);
     stop();

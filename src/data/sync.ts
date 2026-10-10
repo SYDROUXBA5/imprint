@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { teamOdourId } from '../domain/odours';
 import type { ImprintDB, OutboxItem } from './db';
 import type { PulledTable, RemoteError, RemoteStore } from './remote';
 
@@ -10,9 +11,13 @@ export interface SyncDeps {
 }
 
 const SERVER_FIELDS = ['server_received_at', 'client_clock_offset_s', 'updated_at'];
-const PERMANENT_CODES = new Set(['42501', '23514', '23503', '23502', '22P02', 'P0002']);
-// Tombstones last: a dog pulled earlier in the same cycle is purged straight after.
-const PULL_TABLES: PulledTable[] = ['units', 'members', 'dogs', 'sessions', 'corrections', 'deleted_dogs'];
+// 23505: another phone took the same catalogue name first. Rejected for the user to see, not retried forever.
+const PERMANENT_CODES = new Set(['42501', '23514', '23503', '23502', '22P02', 'P0002', '23505']);
+// Parents before children. Tombstones last: a team or dog pulled earlier in the same cycle is purged straight after.
+const PULL_TABLES: PulledTable[] = [
+  'units', 'members', 'teams', 'odour_categories', 'odours', 'team_odours',
+  'dogs', 'sessions', 'corrections', 'deleted_teams', 'deleted_dogs',
+];
 const FK_VIOLATION = '23503';
 const NOTICES_KEY = 'notices';
 const CURSOR_OVERLAP_MS = 5000;
@@ -25,23 +30,50 @@ async function send(d: SyncDeps, item: OutboxItem): Promise<{ error?: RemoteErro
   const row: Record<string, unknown> = { ...item.row };
   for (const f of SERVER_FIELDS) delete row[f];
   if (item.table === 'sessions') row.client_sent_at = nowOf(d).toISOString();
+  if (item.table === 'team_odours') {
+    // No id on the server, and the whole row is the state: always sent as a create-or-overwrite.
+    delete row.id;
+    return d.remote.insert(item.table, row);
+  }
   if (item.op === 'insert') return d.remote.insert(item.table, row);
   const { id, ...patch } = row;
   return d.remote.update(item.table, id as string, patch);
 }
 
+/** Delete these dogs, their sessions and corrections, and every unsent change that refers to them. Run inside a transaction. */
+async function removeDogs(db: ImprintDB, dogIds: Set<string>): Promise<void> {
+  const ids = [...dogIds];
+  const sessionIds = new Set<string>(await db.sessions.where('dog_id').anyOf(ids).primaryKeys());
+  await db.corrections.where('session_id').anyOf([...sessionIds]).delete();
+  await db.sessions.where('dog_id').anyOf(ids).delete();
+  await db.dogs.bulkDelete(ids);
+  await db.outbox
+    .filter((i) =>
+      (i.table === 'dogs' && dogIds.has(i.row.id)) ||
+      (i.table === 'sessions' && (dogIds.has(i.row.dog_id as string) || sessionIds.has(i.row.id))) ||
+      (i.table === 'corrections' && sessionIds.has(i.row.session_id as string)))
+    .delete();
+}
+
 /** Remove a dog deleted forever elsewhere: its rows here, and every unsent change that refers to them. */
 export async function purgeDog(db: ImprintDB, dogId: string): Promise<void> {
-  await db.transaction('rw', [db.dogs, db.sessions, db.corrections, db.outbox], async () => {
-    const sessionIds = new Set<string>(await db.sessions.where('dog_id').equals(dogId).primaryKeys());
-    await db.corrections.where('session_id').anyOf([...sessionIds]).delete();
-    await db.sessions.where('dog_id').equals(dogId).delete();
-    await db.dogs.delete(dogId);
+  await db.transaction('rw', [db.dogs, db.sessions, db.corrections, db.outbox], () => removeDogs(db, new Set([dogId])));
+}
+
+/**
+ * Remove a team deleted forever elsewhere: the team, the dogs that are in it here, their sessions and
+ * corrections, its odour choices, and every unsent change that refers to any of them. A dog this phone
+ * moved out of the team keeps its place in its new team.
+ */
+export async function purgeTeam(db: ImprintDB, teamId: string): Promise<void> {
+  await db.transaction('rw', db.tables, async () => {
+    await removeDogs(db, new Set<string>(await db.dogs.where('team_id').equals(teamId).primaryKeys()));
+    await db.team_odours.where('team_id').equals(teamId).delete();
+    await db.teams.delete(teamId);
     await db.outbox
       .filter((i) =>
-        (i.table === 'dogs' && i.row.id === dogId) ||
-        (i.table === 'sessions' && (i.row.dog_id === dogId || sessionIds.has(i.row.id))) ||
-        (i.table === 'corrections' && sessionIds.has(i.row.session_id as string)))
+        (i.table === 'teams' && i.row.id === teamId) ||
+        (i.table === 'team_odours' && i.row.team_id === teamId))
       .delete();
   });
 }
@@ -124,9 +156,14 @@ export async function pullChanges(d: SyncDeps): Promise<void> {
     if (rows.length === 0) continue;
     if (table === 'deleted_dogs') {
       for (const r of rows) await purgeDog(d.db, r.dog_id as string);
+    } else if (table === 'deleted_teams') {
+      for (const r of rows) await purgeTeam(d.db, r.team_id as string);
     } else {
-      const fresh = rows.filter((r) => !pendingIds.has(r.id as string));
-      await d.db.table(table).bulkPut(fresh);
+      // team_odours has no id on the server; locally it is keyed team:odour, like in the outbox.
+      const keyed = table === 'team_odours'
+        ? rows.map((r) => ({ ...r, id: teamOdourId(r.team_id as string, r.odour_id as string) }))
+        : rows;
+      await d.db.table(table).bulkPut(keyed.filter((r) => !pendingIds.has(r.id as string)));
     }
     const newest = rows.reduce((m, r) => ((r.updated_at as string) > m ? (r.updated_at as string) : m), cursor);
     await d.db.meta.put({ key, value: newest });
@@ -163,7 +200,10 @@ export function startSyncLoop(d: SyncDeps, client: SupabaseClient, intervalMs = 
     try { await syncOnce(d); } catch { /* retried on the next tick */ } finally { busy = false; }
   };
   const channel = client.channel(`unit-${d.unitId}`);
-  for (const table of ['dogs', 'members', 'sessions', 'corrections', 'deleted_dogs']) {
+  for (const table of [
+    'dogs', 'members', 'sessions', 'corrections', 'teams', 'odour_categories', 'odours', 'team_odours',
+    'deleted_dogs', 'deleted_teams',
+  ]) {
     channel.on('postgres_changes', { event: '*', schema: 'public', table, filter: `unit_id=eq.${d.unitId}` }, run);
   }
   channel.subscribe();

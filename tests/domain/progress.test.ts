@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { progressLine, trainedOdours } from '../../src/domain/progress';
 import type { Correction, Session } from '../../src/domain/types';
+import { ODOURS } from '../fixtures';
 
 const base: Session = {
   id: '', unit_id: 'u1', dog_id: 'd1', odour_id: 'mdma', handler_id: 'mH', kind: 'manual',
@@ -19,7 +20,7 @@ describe('progress line', () => {
       manual('b', 'mdma', '2026-10-03', 42),
       manual('c', 'heroin', '2026-09-20', 30),
     ];
-    expect(progressLine('d1', sessions, [], NOW)).toBe('MDMA 42/75 · Cocaine ✓ · Heroin 30/75');
+    expect(progressLine('d1', sessions, [], ODOURS, NOW)).toBe('MDMA 42/75 · Cocaine ✓ · Heroin 30/75');
   });
 
   it('orders by day, then by start time within a day', () => {
@@ -28,7 +29,7 @@ describe('progress line', () => {
       started_at: '2026-10-03T08:00:00Z', ended_at: '2026-10-03T08:10:00Z', duration_s: 600,
     };
     const sessions = [manual('m', 'mdma', '2026-10-03', 5), timed];
-    expect(trainedOdours('d1', sessions, [], NOW).map((o) => o.odourId)).toEqual(['tnt', 'mdma']);
+    expect(trainedOdours('d1', sessions, [], ODOURS, NOW).map((o) => o.odourId)).toEqual(['tnt', 'mdma']);
   });
 
   it('ignores other dogs and odours with nothing logged or fully voided', () => {
@@ -37,7 +38,7 @@ describe('progress line', () => {
       id: 'c', session_id: 'v', unit_id: 'u1', trainer_id: 'mT', void: true, new_duration_s: null,
       reason: 'x', created_at: '2026-10-04T00:00:00Z',
     };
-    expect(progressLine('d1', sessions, [voided], NOW)).toBe('MDMA 10/75');
+    expect(progressLine('d1', sessions, [voided], ODOURS, NOW)).toBe('MDMA 10/75');
   });
 
   it('counts a running session live, and lists it even in its first second', () => {
@@ -45,11 +46,17 @@ describe('progress line', () => {
       ...base, id: 'r', odour_id: 'cannabis', kind: 'timed', session_date: '2026-10-05',
       started_at: '2026-10-05T09:48:00Z', duration_s: null,
     };
-    expect(progressLine('d1', [running], [], NOW)).toBe('Cannabis 12/75');
-    expect(progressLine('d1', [running], [], Date.parse('2026-10-05T09:48:00Z'))).toBe('Cannabis 0/75');
+    expect(progressLine('d1', [running], [], ODOURS, NOW)).toBe('Cannabis 12/75');
+    expect(progressLine('d1', [running], [], ODOURS, Date.parse('2026-10-05T09:48:00Z'))).toBe('Cannabis 0/75');
+  });
+
+  it('names an odour from the catalogue it is given, archived ones too, and skips ids it has never heard of', () => {
+    const odours = [{ ...ODOURS.find((o) => o.id === 'mdma')!, name: 'Ecstasy', archived_at: '2026-10-02T00:00:00Z' }];
+    const sessions = [manual('a', 'mdma', '2026-10-03', 10), manual('b', 'unknown', '2026-10-03', 10)];
+    expect(progressLine('d1', sessions, [], odours, NOW)).toBe('Ecstasy 10/75');
   });
 
   it('is empty when nothing is logged', () => {
-    expect(progressLine('d1', [], [], NOW)).toBe('');
+    expect(progressLine('d1', [], [], ODOURS, NOW)).toBe('');
   });
 });

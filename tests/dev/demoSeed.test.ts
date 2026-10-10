@@ -5,7 +5,10 @@ import { DEMO_INVITE_CODE, DEMO_UNIT_NAME, seedDemo } from '../../src/dev/demoSe
 import { needsClockCheck, overlappingSessionIds } from '../../src/domain/flags';
 import { isValidInviteCode } from '../../src/domain/inviteCode';
 import { IMPRINT_TARGET_S, isImprinted, isRunning, latestCorrection, odourTotal } from '../../src/domain/totals';
+import { isBreedId, isPurpose } from '../../src/domain/breeds';
+import { DEFAULT_CATALOGUE, isInTeamList } from '../../src/domain/odours';
 import type { Member } from '../../src/domain/types';
+import { dogRow, team } from '../fixtures';
 
 const NOW = new Date(2026, 9, 9, 12, 0, 0);
 let db: ImprintDB;
@@ -27,7 +30,7 @@ async function load() {
 }
 
 describe('demo seed', () => {
-  it('creates the unit, two trainers, three handlers, four active dogs and one archived dog', async () => {
+  it('creates the unit, two trainers, three handlers, five dogs that are not archived and one that is', async () => {
     await seedDemo('trainer', { db, now: NOW });
     const { dogs, members } = await load();
     const unit = await db.units.toCollection().first();
@@ -36,8 +39,54 @@ describe('demo seed', () => {
     expect(unit?.invite_code).toBe(DEMO_INVITE_CODE);
     expect(members.filter((m) => m.role === 'trainer')).toHaveLength(2);
     expect(members.filter((m) => m.role === 'handler')).toHaveLength(3);
-    expect(dogs.filter((d) => d.archived_at === null)).toHaveLength(4);
+    expect(dogs.filter((d) => d.archived_at === null)).toHaveLength(5);
     expect(dogs.filter((d) => d.archived_at !== null)).toHaveLength(1);
+  });
+
+  it('has three teams, one of them archived, and every dog is in one with a breed and a purpose', async () => {
+    await seedDemo('trainer', { db, now: NOW });
+    const { dogs } = await load();
+    const teams = await db.teams.toArray();
+    expect(teams).toHaveLength(3);
+    expect(teams.filter((t) => t.archived_at !== null)).toHaveLength(1);
+    expect(new Set(teams.map((t) => t.name)).size).toBe(3);
+    for (const d of dogs) {
+      expect(teams.some((t) => t.id === d.team_id), d.name).toBe(true);
+      expect(isBreedId(d.breed), d.name).toBe(true);
+      expect(isPurpose(d.purpose), d.name).toBe(true);
+    }
+    expect(new Set(dogs.map((d) => d.breed)).size).toBeGreaterThan(3);
+    expect(new Set(dogs.map((d) => d.purpose))).toEqual(new Set(['single', 'dual']));
+    // the archived team holds a dog; the active ones hold several between them, an archived dog among them
+    const archivedTeam = teams.find((t) => t.archived_at !== null)!;
+    expect(dogs.filter((d) => d.team_id === archivedTeam.id).length).toBeGreaterThan(0);
+  });
+
+  it('has the four default categories, a custom category with a custom odour, and a different list for each team', async () => {
+    await seedDemo('trainer', { db, now: NOW });
+    const categories = (await db.odour_categories.toArray()).sort((a, b) => a.sort - b.sort);
+    const odours = await db.odours.toArray();
+    expect(categories.slice(0, 4).map((c) => c.name)).toEqual(DEFAULT_CATALOGUE.map((c) => c.name));
+    const custom = categories.slice(4);
+    expect(custom.map((c) => c.name)).toEqual(['Currency']);
+    expect(odours.filter((o) => o.category_id === custom[0].id).map((o) => o.name)).toEqual(['Banknotes']);
+    expect(odours).toHaveLength(DEFAULT_CATALOGUE.reduce((n, c) => n + c.odours.length, 0) + 1);
+    expect(categories.every((c) => c.archived_at === null) && odours.every((o) => o.archived_at === null)).toBe(true);
+    const teamOdours = await db.team_odours.toArray();
+    const listOf = (teamId: string) => teamOdours.filter((t) => t.team_id === teamId && t.selected).map((t) => t.odour_id).sort().join(',');
+    const lists = new Set((await db.teams.toArray()).map((t) => listOf(t.id)));
+    expect(lists.size).toBe(3);
+    expect([...lists].every((l) => l.length > 0)).toBe(true);
+  });
+
+  it('logs every session on an odour of the catalogue that the dog\'s team trains on', async () => {
+    await seedDemo('trainer', { db, now: NOW });
+    const { dogs, sessions } = await load();
+    const catalogue = { categories: await db.odour_categories.toArray(), odours: await db.odours.toArray(), teamOdours: await db.team_odours.toArray() };
+    for (const s of sessions) {
+      const dog = dogs.find((d) => d.id === s.dog_id)!;
+      expect(isInTeamList(dog.team_id, s.odour_id, catalogue), `${dog.name} / ${s.odour_id}`).toBe(true);
+    }
   });
 
   it('signs in as the trainer or the handler that was asked for', async () => {
@@ -108,12 +157,14 @@ describe('demo seed', () => {
   });
 
   it('wipes what was there before, and leaves nothing waiting to sync', async () => {
-    await db.dogs.add({
-      id: 'old', unit_id: 'x', name: 'Leftover', created_by: 'x', created_at: NOW.toISOString(), archived_at: null,
-    });
+    await db.dogs.add(dogRow('old', 'Leftover', { unit_id: 'x', team_id: 'old-team' }));
+    await db.teams.add(team('old-team', 'Leftover team', null, 'x'));
+    await db.odours.add({ id: 'old-odour', unit_id: 'x', category_id: 'x', name: 'Leftover', created_at: '', archived_at: null });
     await db.outbox.add({ table: 'dogs', op: 'insert', row: { id: 'old' }, created_at: NOW.toISOString(), status: 'pending' });
     await seedDemo('handler', { db, now: NOW });
     expect((await db.dogs.toArray()).some((d) => d.id === 'old')).toBe(false);
+    expect((await db.teams.toArray()).some((t) => t.id === 'old-team')).toBe(false);
+    expect((await db.odours.toArray()).some((o) => o.id === 'old-odour')).toBe(false);
     expect(await db.outbox.count()).toBe(0);
   });
 });

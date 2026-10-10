@@ -2,7 +2,10 @@
 // Reached only through a guarded dynamic import in main.tsx; never part of a production build.
 import { db as appDb, ME_KEY, type ImprintDB } from '../data/db';
 import { localDate } from '../domain/format';
-import type { Correction, Dog, Member, Role, Session, Unit } from '../domain/types';
+import { defaultCatalogueRows, teamOdourId } from '../domain/odours';
+import type {
+  BreedId, Correction, Dog, Member, Odour, OdourCategory, Purpose, Role, Session, Team, TeamOdour, Unit,
+} from '../domain/types';
 
 export const DEMO_UNIT_NAME = 'Demo K9 Unit';
 export const DEMO_INVITE_CODE = 'PAWS42';
@@ -17,6 +20,10 @@ export async function seedDemo(role: Role, { db = appDb, now = new Date() }: Opt
     for (const table of db.tables) await table.clear();
     await db.units.add(data.unit);
     await db.members.bulkAdd(data.members);
+    await db.teams.bulkAdd(data.teams);
+    await db.odour_categories.bulkAdd(data.categories);
+    await db.odours.bulkAdd(data.odours);
+    await db.team_odours.bulkAdd(data.teamOdours);
     await db.dogs.bulkAdd(data.dogs);
     await db.sessions.bulkAdd(data.sessions);
     await db.corrections.bulkAdd(data.corrections);
@@ -65,16 +72,50 @@ export function buildDemoData(now: Date) {
     member('demo-h3', 'Ana Souza', 'handler'),
   ];
 
-  const dog = (id: string, name: string, created: Date, archived: Date | null = null): Dog => ({
-    id, unit_id: unitId, name, created_by: 'demo-t1', created_at: iso(created),
+  // The default catalogue plus one custom category with one custom odour. Odour ids are the readable
+  // slugs ('cocaine', 'c4-rdx'), category ids 'cat-<slug>': the local store takes any string.
+  const slug = (name: string) => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const { categories, odours } = defaultCatalogueRows(unitId, iso(day(40, 9)),
+    (kind, name) => (kind === 'category' ? `cat-${slug(name)}` : slug(name)));
+  categories.push({
+    id: 'cat-currency', unit_id: unitId, name: 'Currency', sort: categories.length + 1, created_at: iso(day(12, 11)), archived_at: null,
+  } satisfies OdourCategory);
+  odours.push({
+    id: 'banknotes', unit_id: unitId, category_id: 'cat-currency', name: 'Banknotes', created_at: iso(day(12, 11)), archived_at: null,
+  } satisfies Odour);
+
+  const team = (id: string, name: string, created: Date, archived: Date | null = null): Team => ({
+    id, unit_id: unitId, name, created_by: 'demo-t1', created_at: iso(created), archived_at: archived ? iso(archived) : null,
+  });
+  const teams: Team[] = [
+    team('demo-team-detection', 'Detection', day(40, 9, 30)),
+    team('demo-team-customs', 'Customs', day(30, 9, 30)),
+    team('demo-team-2025', 'Training 2025', day(40, 9, 40), day(15, 17)),
+  ];
+  // Each team trains on its own odours: Detection on narcotics and explosives, Customs on a few narcotics,
+  // the custom Banknotes and the bed bugs, the archived team on cocaine only.
+  const inCategory = (category: string) => odours.filter((o) => o.category_id === category).map((o) => o.id);
+  const picks: Record<string, string[]> = {
+    'demo-team-detection': [...inCategory('cat-narcotics'), ...inCategory('cat-explosives')],
+    'demo-team-customs': ['cocaine', 'cannabis', 'fentanyl', 'banknotes', 'live-bed-bugs', 'viable-eggs'],
+    'demo-team-2025': ['cocaine'],
+  };
+  const teamOdours: TeamOdour[] = Object.entries(picks).flatMap(([teamId, ids]) =>
+    ids.map((odourId) => ({ id: teamOdourId(teamId, odourId), team_id: teamId, odour_id: odourId, unit_id: unitId, selected: true })));
+
+  const dog = (
+    id: string, name: string, teamId: string, breed: BreedId, purpose: Purpose, created: Date, archived: Date | null = null,
+  ): Dog => ({
+    id, unit_id: unitId, team_id: teamId, name, breed, purpose, created_by: 'demo-t1', created_at: iso(created),
     archived_at: archived ? iso(archived) : null,
   });
   const dogs: Dog[] = [
-    dog('demo-juno', 'Juno', day(35, 10)),
-    dog('demo-bramble', 'Bramble', day(30, 10)),
-    dog('demo-kestrel', 'Kestrel', day(20, 10)),
-    dog('demo-moss', 'Moss', day(3, 10)),
-    dog('demo-tilly', 'Tilly', day(40, 10), day(9, 16)),
+    dog('demo-juno', 'Juno', 'demo-team-detection', 'malinois', 'dual', day(35, 10)),
+    dog('demo-bramble', 'Bramble', 'demo-team-detection', 'springer-spaniel', 'single', day(30, 10)),
+    dog('demo-kestrel', 'Kestrel', 'demo-team-detection', 'german-shepherd', 'dual', day(20, 10)),
+    dog('demo-moss', 'Moss', 'demo-team-customs', 'labrador', 'single', day(3, 10)),
+    dog('demo-tilly', 'Tilly', 'demo-team-customs', 'golden-retriever', 'single', day(40, 10), day(9, 16)),
+    dog('demo-scout', 'Scout', 'demo-team-2025', 'bloodhound', 'single', day(40, 10, 30)),
   ];
 
   const sessions: Session[] = [];
@@ -138,8 +179,13 @@ export function buildDemoData(now: Date) {
     client_clock_offset_s: 1, server_received_at: iso(new Date(runStart.getTime() + 2000)),
   });
 
-  // Moss: new, one run this morning.
+  // Moss: new, one run this morning, then a custom odour and the bed bugs.
   timed('m1', 'demo-moss', 'cocaine', jess, minsAgo(90), 12 * 60 + 30);
+  manual('m2', 'demo-moss', 'banknotes', jess, 1, 20);
+  manual('m3', 'demo-moss', 'live-bed-bugs', tom, 2, 15);
+
+  // Scout: in the archived team.
+  timed('s1', 'demo-scout', 'cocaine', tom, day(20, 10), 18 * 60);
 
   // Tilly: archived.
   timed('t1', 'demo-tilly', 'cocaine', tom, day(28, 10), 20 * 60);
@@ -156,5 +202,5 @@ export function buildDemoData(now: Date) {
     correction('2', 'b7', t2, day(3, 9), 'Timer was started on the wrong dog. That work was on Kestrel.', null),
   ];
 
-  return { unit, members, dogs, sessions, corrections };
+  return { unit, members, teams, categories, odours, teamOdours, dogs, sessions, corrections };
 }

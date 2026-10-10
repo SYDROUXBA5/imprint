@@ -2,6 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { dogRow, seedCatalogue } from '../fixtures';
 import type { Correction, Dog, Member, Session } from '../../src/domain/types';
 
 vi.mock('../../src/data/account');
@@ -20,9 +21,7 @@ const { DogScreen } = await import('../../src/ui/screens/DogScreen');
 
 const tess: Member = { id: 'mT', unit_id: 'u1', user_id: 'uT', name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
 const paul: Member = { ...tess, id: 'mP', user_id: 'uP', name: 'Paul', role: 'handler' };
-const dog = (id: string, name: string, archived: string | null = null): Dog => ({
-  id, unit_id: 'u1', name, created_by: 'mT', created_at: '2026-10-01T00:00:00Z', archived_at: archived,
-});
+const dog = (id: string, name: string, archived: string | null = null): Dog => dogRow(id, name, { archived_at: archived });
 const session = (id: string, dogId: string, odour: string, seconds: number): Session => ({
   id, unit_id: 'u1', dog_id: dogId, odour_id: odour, handler_id: 'mP', kind: 'manual', session_date: '2026-10-03',
   started_at: null, ended_at: null, duration_s: seconds, client_clock_offset_s: null, server_received_at: null,
@@ -36,6 +35,7 @@ async function seed(me: Member) {
   await db.meta.put({ key: ME_KEY, value: me });
   await db.units.put({ id: 'u1', name: 'Border K9', invite_code: 'K7M2QX', created_at: '2026-10-01T00:00:00Z' });
   await db.members.bulkPut([tess, paul]);
+  await seedCatalogue(db);
   await db.dogs.bulkPut([dog('d1', 'Rex'), dog('d2', 'Bella', '2026-10-06T00:00:00Z')]);
   await db.sessions.bulkPut([session('s1', 'd1', 'mdma', 600), session('s2', 'd2', 'tnt', 900)]);
   await db.corrections.put(correction);

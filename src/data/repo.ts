@@ -1,6 +1,7 @@
+import { isBreedId, isPurpose } from '../domain/breeds';
 import { localDate } from '../domain/format';
 import { isRunning } from '../domain/totals';
-import type { Correction, Dog, Member, Session } from '../domain/types';
+import type { BreedId, Correction, Dog, Member, Purpose, Session } from '../domain/types';
 import type { ImprintDB, OutboxItem, SyncedTable } from './db';
 
 export interface Ctx {
@@ -19,18 +20,55 @@ export class AlreadyRunningError extends Error {
   }
 }
 
-const nowOf = (c: Ctx) => (c.now ?? (() => new Date()))();
-const idOf = (c: Ctx) => (c.uuid ?? (() => crypto.randomUUID()))();
-const requireTrainer = (c: Ctx) => {
+export const nowOf = (c: Ctx) => (c.now ?? (() => new Date()))();
+export const idOf = (c: Ctx) => (c.uuid ?? (() => crypto.randomUUID()))();
+export const requireTrainer = (c: Ctx) => {
   if (c.me.role !== 'trainer') throw new NotAllowedError('Trainers only');
 };
+/** A name typed by a person: trimmed, and never empty. */
+export const cleanName = (name: string, what: string): string => {
+  const clean = name.trim();
+  if (!clean) throw new Error(`${what} name is required`);
+  return clean;
+};
 
-async function write(c: Ctx, table: SyncedTable, op: OutboxItem['op'], row: OutboxItem['row']) {
-  await c.db.transaction('rw', c.db.table(table), c.db.outbox, async () => {
-    if (op === 'insert') await c.db.table(table).add(row);
-    else await c.db.table(table).update(row.id, row);
-    await c.db.outbox.add({ table, op, row, created_at: nowOf(c).toISOString(), status: 'pending' });
+export interface WriteOp { table: SyncedTable; op: OutboxItem['op']; row: OutboxItem['row'] }
+
+/**
+ * Apply changes to the local store and queue them for the server, all or nothing and in the order given
+ * (a team before its team_odours). An insert adds the whole row; an update patches the fields given.
+ */
+export async function writeAll(c: Ctx, ops: WriteOp[]): Promise<void> {
+  const createdAt = nowOf(c).toISOString();
+  await c.db.transaction('rw', c.db.tables, async () => {
+    for (const { table, op, row } of ops) {
+      if (op === 'insert') await c.db.table(table).add(row);
+      else await c.db.table(table).update(row.id, row);
+      await c.db.outbox.add({ table, op, row, created_at: createdAt, status: 'pending' });
+    }
   });
+}
+
+const write = (c: Ctx, table: SyncedTable, op: OutboxItem['op'], row: OutboxItem['row']) =>
+  writeAll(c, [{ table, op, row }]);
+
+/** The odour a session points at has to be one of this unit's catalogue; the server enforces it too. */
+async function requireOdour(c: Ctx, odourId: string): Promise<void> {
+  const odour = await c.db.odours.get(odourId);
+  if (!odour || odour.unit_id !== c.me.unit_id) throw new Error('Unknown odour');
+}
+
+async function requireActiveTeam(c: Ctx, teamId: string): Promise<void> {
+  const team = await c.db.teams.get(teamId);
+  if (!team || team.unit_id !== c.me.unit_id) throw new Error('Team not found');
+  if (team.archived_at !== null) throw new Error('That team is archived');
+}
+
+function checkBreed(breed: unknown): asserts breed is BreedId {
+  if (!isBreedId(breed)) throw new Error('Pick a breed');
+}
+function checkPurpose(purpose: unknown): asserts purpose is Purpose {
+  if (!isPurpose(purpose)) throw new Error('Pick single or dual purpose');
 }
 
 export async function runningSessionForDog(db: ImprintDB, dogId: string): Promise<Session | undefined> {
@@ -40,23 +78,50 @@ export async function runningSessionForDog(db: ImprintDB, dogId: string): Promis
   return sessions.find((s) => isRunning(s, corrections));
 }
 
-export async function addDog(c: Ctx, name: string): Promise<Dog> {
+/** Name, team, breed and purpose are all required (spec §13.2). The team has to be active. */
+export async function addDog(c: Ctx, name: string, teamId: string, breed: BreedId, purpose: Purpose): Promise<Dog> {
   requireTrainer(c);
-  const clean = name.trim();
-  if (!clean) throw new Error('Dog name is required');
+  const clean = cleanName(name, 'Dog');
+  await requireActiveTeam(c, teamId);
+  checkBreed(breed);
+  checkPurpose(purpose);
   const dog: Dog = {
-    id: idOf(c), unit_id: c.me.unit_id, name: clean, created_by: c.me.id,
+    id: idOf(c), unit_id: c.me.unit_id, team_id: teamId, name: clean, breed, purpose, created_by: c.me.id,
     created_at: nowOf(c).toISOString(), archived_at: null,
   };
   await write(c, 'dogs', 'insert', { ...dog });
   return dog;
 }
 
-export async function renameDog(c: Ctx, dogId: string, name: string): Promise<void> {
+async function requireDog(c: Ctx, dogId: string): Promise<Dog> {
+  const dog = await c.db.dogs.get(dogId);
+  if (!dog) throw new Error('Dog not found');
+  return dog;
+}
+
+/** Change a dog's name, breed or purpose; only the fields given are sent. Moving it is `moveDog`. */
+export async function editDog(
+  c: Ctx, dogId: string, changes: { name?: string; breed?: BreedId; purpose?: Purpose },
+): Promise<void> {
   requireTrainer(c);
-  const clean = name.trim();
-  if (!clean) throw new Error('Dog name is required');
-  await write(c, 'dogs', 'update', { id: dogId, name: clean });
+  await requireDog(c, dogId);
+  const patch: { name?: string; breed?: BreedId; purpose?: Purpose } = {};
+  if (changes.name !== undefined) patch.name = cleanName(changes.name, 'Dog');
+  if (changes.breed !== undefined) { checkBreed(changes.breed); patch.breed = changes.breed; }
+  if (changes.purpose !== undefined) { checkPurpose(changes.purpose); patch.purpose = changes.purpose; }
+  if (Object.keys(patch).length === 0) return;
+  await write(c, 'dogs', 'update', { id: dogId, ...patch });
+}
+
+export const renameDog = (c: Ctx, dogId: string, name: string): Promise<void> => editDog(c, dogId, { name });
+
+/** Move a dog to another active team of the unit. Its history stays with it. */
+export async function moveDog(c: Ctx, dogId: string, teamId: string): Promise<void> {
+  requireTrainer(c);
+  const dog = await requireDog(c, dogId);
+  await requireActiveTeam(c, teamId);
+  if (dog.team_id === teamId) return;
+  await write(c, 'dogs', 'update', { id: dogId, team_id: teamId });
 }
 
 export async function archiveDog(c: Ctx, dogId: string): Promise<void> {
@@ -72,6 +137,7 @@ export async function restoreDog(c: Ctx, dogId: string): Promise<void> {
 }
 
 export async function startSession(c: Ctx, dogId: string, odourId: string): Promise<Session> {
+  await requireOdour(c, odourId);
   const running = await runningSessionForDog(c.db, dogId);
   if (running) throw new AlreadyRunningError(running);
   const now = nowOf(c);
@@ -99,6 +165,7 @@ export async function addManualSession(
   c: Ctx, dogId: string, odourId: string, dateYmd: string, minutes: number,
 ): Promise<Session> {
   if (!Number.isInteger(minutes) || minutes <= 0) throw new Error('Minutes must be a whole number above 0');
+  await requireOdour(c, odourId);
   const s: Session = {
     id: idOf(c), unit_id: c.me.unit_id, dog_id: dogId, odour_id: odourId, handler_id: c.me.id,
     kind: 'manual', session_date: dateYmd, started_at: null, ended_at: null,

@@ -2,7 +2,7 @@ import { needsClockCheck, overlappingSessionIds } from '../domain/flags';
 import { formatMinSec } from '../domain/format';
 import { odourById } from '../domain/odours';
 import { currentDuration, latestCorrection } from '../domain/totals';
-import type { Correction, Dog, Member, Session } from '../domain/types';
+import type { Correction, Dog, Member, Odour, OdourCategory, Session } from '../domain/types';
 
 export const CSV_HEADER = [
   'dog', 'dog archived', 'group', 'odour', 'handler', 'kind', 'date', 'start', 'end',
@@ -16,6 +16,9 @@ export interface CsvInput {
   members: Member[];
   sessions: Session[];
   corrections: Correction[];
+  /** The odour catalogue, archived rows included: it names each session's odour and its category. */
+  odours: Odour[];
+  categories: OdourCategory[];
   /** For the overlap check on a timer that is still running. */
   nowMs: number;
 }
@@ -44,9 +47,10 @@ function cell(value: string, userText = false): string {
  * One row per session, archived dogs and voided sessions included. UTF-8 with a byte order mark so
  * Excel shows accents; CRLF line ends. Rows run by dog name, then oldest first.
  */
-export function sessionsCsv({ dogs, members, sessions, corrections, nowMs }: CsvInput): string {
+export function sessionsCsv({ dogs, members, sessions, corrections, odours, categories, nowMs }: CsvInput): string {
   const dogById = new Map(dogs.map((d) => [d.id, d]));
   const memberName = new Map(members.map((m) => [m.id, m.name]));
+  const categoryName = new Map(categories.map((c) => [c.id, c.name]));
   const isVoided = (s: Session) => latestCorrection(s.id, corrections)?.void === true;
   // A voided session is out of the picture, so it neither is flagged nor flags the one next to it.
   const overlapping = overlappingSessionIds(sessions.filter((s) => !isVoided(s)), nowMs);
@@ -60,14 +64,14 @@ export function sessionsCsv({ dogs, members, sessions, corrections, nowMs }: Csv
 
   const lines = ordered.map((s) => {
     const dog = dogById.get(s.dog_id);
-    const odour = odourById(s.odour_id);
+    const odour = odourById(odours, s.odour_id);
     const mine = corrections.filter((c) => c.session_id === s.id).sort((a, b) => a.created_at.localeCompare(b.created_at));
     const flags = [overlapping.has(s.id) && 'Overlap', needsClockCheck(s) && 'Clock check'].filter(Boolean).join(' | ');
     const current = currentDuration(s, corrections);
     return [
       cell(dog?.name ?? '', true),
       dog?.archived_at ? 'yes' : 'no',
-      odour ? (odour.group === 'narcotics' ? 'Narcotics' : 'Explosives') : '',
+      cell(odour ? (categoryName.get(odour.category_id) ?? '') : '', true),
       cell(odour?.name ?? s.odour_id, true),
       cell(memberName.get(s.handler_id) ?? 'Unknown', true),
       s.kind,

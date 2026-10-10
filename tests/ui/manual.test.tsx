@@ -4,10 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, ME_KEY } from '../../src/data/db';
 import { localDate } from '../../src/domain/format';
 import type { Dog, Member, Session } from '../../src/domain/types';
+import { dogRow, seedCatalogue } from '../fixtures';
 import { ManualEntrySheet } from '../../src/ui/screens/ManualEntrySheet';
 
 const hana: Member = { id: 'mA', unit_id: 'u1', user_id: 'uA', name: 'Hana', role: 'handler', joined_at: '', removed_at: null };
-const rex: Dog = { id: 'd1', unit_id: 'u1', name: 'Rex', created_by: 'mT', created_at: '2026-10-01T00:00:00Z', archived_at: null };
+const rex: Dog = dogRow('d1', 'Rex');
 const manual = (id: string, odour: string, minutes: number, dog = 'd1'): Session => ({
   id, unit_id: 'u1', dog_id: dog, odour_id: odour, handler_id: 'mA', kind: 'manual', session_date: '2026-10-03',
   started_at: null, ended_at: null, duration_s: minutes * 60, client_clock_offset_s: null, server_received_at: null,
@@ -19,6 +20,7 @@ const tomorrow = () => localDate(new Date(Date.now() + 86_400_000));
 async function seed(sessions: Session[] = [], me: Member = hana) {
   await db.meta.put({ key: ME_KEY, value: me });
   await db.members.put(hana);
+  await seedCatalogue(db);
   await db.dogs.put(rex);
   await db.sessions.bulkPut(sessions);
 }

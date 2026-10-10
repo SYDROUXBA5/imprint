@@ -2,7 +2,7 @@ import { useMemo, useState, type CSSProperties } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { needsClockCheck, overlappingSessionIds } from '../../domain/flags';
 import { formatClock, formatDay, formatMinSec, localDate } from '../../domain/format';
-import { ODOURS, odourById } from '../../domain/odours';
+import { odourName, sortOdours } from '../../domain/odours';
 import { trainedOdours } from '../../domain/progress';
 import { currentDuration, isRunning, latestCorrection, liveElapsed } from '../../domain/totals';
 import type { Correction, Member, Session } from '../../domain/types';
@@ -28,7 +28,7 @@ interface Editing { session: Session; mode: 'correct' | 'void' }
 export function LogScreen() {
   const { dogId = '' } = useParams();
   const me = useMe();
-  const { dogs, members, sessions, corrections, loading } = useUnitData();
+  const { dogs, members, sessions, corrections, odours, loading } = useUnitData();
   const navigate = useNavigate();
   const [odourFilter, setOdourFilter] = useState('');
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -53,8 +53,8 @@ export function LogScreen() {
 
   const isTrainer = me.role === 'trainer';
   const nameOf = (id: string) => members.find((m) => m.id === id)?.name ?? 'Someone';
-  const totals = trainedOdours(dog.id, dogSessions, corrections, now);
-  const loggedOdours = ODOURS.filter((o) => dogSessions.some((s) => s.odour_id === o.id));
+  const totals = trainedOdours(dog.id, dogSessions, corrections, odours, now);
+  const loggedOdours = sortOdours(odours.filter((o) => dogSessions.some((s) => s.odour_id === o.id)));
   const shown = odourFilter ? sorted.filter((s) => s.odour_id === odourFilter) : sorted;
 
   return (
@@ -97,7 +97,7 @@ export function LogScreen() {
           listStyle: 'none', margin: '16px 0 0', padding: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12,
         }}>
           {shown.map((s) => (
-            <LogRow key={s.id} session={s} corrections={corrections} now={now} nameOf={nameOf}
+            <LogRow key={s.id} session={s} corrections={corrections} now={now} nameOf={nameOf} odourLabel={odourName(odours, s.odour_id)}
               flagged={overlapping.has(s.id)} isTrainer={isTrainer}
               onEdit={(mode) => setEditing({ session: s, mode })} />
           ))}
@@ -108,7 +108,7 @@ export function LogScreen() {
         <CorrectionSheet key={`${editing.session.id}-${editing.mode}`} me={me as Member}
           sessionId={editing.session.id} mode={editing.mode}
           currentS={currentDuration(editing.session, corrections)}
-          summary={`${odourById(editing.session.odour_id)?.name ?? editing.session.odour_id} · ${formatDay(editing.session.session_date)} · ${nameOf(editing.session.handler_id)}`}
+          summary={`${odourName(odours, editing.session.odour_id)} · ${formatDay(editing.session.session_date)} · ${nameOf(editing.session.handler_id)}`}
           onClose={() => setEditing(null)} />
       )}
     </div>
@@ -120,13 +120,13 @@ interface LogRowProps {
   corrections: Correction[];
   now: number;
   nameOf: (memberId: string) => string;
+  odourLabel: string;
   flagged: boolean;
   isTrainer: boolean;
   onEdit: (mode: 'correct' | 'void') => void;
 }
 
-function LogRow({ session: s, corrections, now, nameOf, flagged, isTrainer, onEdit }: LogRowProps) {
-  const odour = odourById(s.odour_id)?.name ?? s.odour_id;
+function LogRow({ session: s, corrections, now, nameOf, odourLabel: odour, flagged, isTrainer, onEdit }: LogRowProps) {
   const date = formatDay(s.session_date);
   const correction = latestCorrection(s.id, corrections);
   const running = isRunning(s, corrections);

@@ -1,9 +1,15 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 export interface RemoteError { code?: string; message: string }
-export type PulledTable = 'units' | 'members' | 'dogs' | 'sessions' | 'corrections' | 'deleted_dogs';
+export type PulledTable =
+  | 'units' | 'members' | 'teams' | 'odour_categories' | 'odours' | 'team_odours'
+  | 'dogs' | 'sessions' | 'corrections' | 'deleted_teams' | 'deleted_dogs';
 
 export interface RemoteStore {
+  /**
+   * Create the row if it is not there yet (a repeat of an insert that already reached the server is a no-op).
+   * `team_odours` has no id and its whole row is the state, so there a repeat overwrites `selected` instead.
+   */
   insert(table: string, row: Record<string, unknown>): Promise<{ error?: RemoteError }>;
   update(table: string, id: string, patch: Record<string, unknown>): Promise<{ error?: RemoteError }>;
   changesSince(table: PulledTable, unitId: string, sinceIso: string):
@@ -15,7 +21,10 @@ const err = (e: { code?: string; message: string } | null) =>
 
 export const supabaseRemote = (client: SupabaseClient): RemoteStore => ({
   async insert(table, row) {
-    const { error } = await client.from(table).upsert(row, { onConflict: 'id', ignoreDuplicates: true });
+    const choice = table === 'team_odours';
+    const { error } = await client.from(table).upsert(row, choice
+      ? { onConflict: 'team_id,odour_id' }
+      : { onConflict: 'id', ignoreDuplicates: true });
     return err(error);
   },
   async update(table, id, patch) {

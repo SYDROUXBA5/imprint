@@ -3,9 +3,10 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { db } from '../../data/db';
 import { addDog } from '../../data/repo';
+import { createTeam } from '../../data/teams';
 import { syncStatus, takeNotices } from '../../data/sync';
 import { progressLine } from '../../domain/progress';
-import { odourById } from '../../domain/odours';
+import { odourName } from '../../domain/odours';
 import { isRunning } from '../../domain/totals';
 import { useMe } from '../../hooks/useMe';
 import { useNow } from '../../hooks/useNow';
@@ -22,7 +23,7 @@ const NO_SYNC = { pending: 0, rejected: 0, stale: false };
 
 export function DogsScreen() {
   const me = useMe();
-  const { dogs, archivedDogs, members, sessions, corrections, loading } = useUnitData();
+  const { dogs, archivedDogs, teams, odours, members, sessions, corrections, loading } = useUnitData();
   const navigate = useNavigate();
   const sync = useLiveQuery(() => syncStatus(db), [], NO_SYNC);
   const [adding, setAdding] = useState(false);
@@ -42,12 +43,12 @@ export function DogsScreen() {
     for (const s of sessions) {
       if (!isRunning(s, corrections) || !dogNames.has(s.dog_id)) continue;
       items.push({
-        dog: dogNames.get(s.dog_id)!, odour: odourById(s.odour_id)?.name ?? s.odour_id,
+        dog: dogNames.get(s.dog_id)!, odour: odourName(odours, s.odour_id),
         handler: names.get(s.handler_id) ?? 'Someone', startedAt: s.started_at!,
       });
     }
     return items.sort((a, b) => a.startedAt.localeCompare(b.startedAt));
-  }, [dogs, members, sessions, corrections]);
+  }, [dogs, members, odours, sessions, corrections]);
 
   const now = useNow(running.length > 0 ? 1000 : null);
 
@@ -57,7 +58,12 @@ export function DogsScreen() {
   async function submitDog(e: FormEvent) {
     e.preventDefault();
     try {
-      await addDog({ db, me: me! }, newName);
+      // Temporary, until the team-scoped Add dog sheet lands: the first active team, breed "other", single
+      // purpose. A unit with no team yet gets one that trains on the whole catalogue.
+      const ctx = { db, me: me! };
+      const teamId = teams[0]?.id
+        ?? (await createTeam(ctx, 'My team', odours.filter((o) => o.archived_at === null).map((o) => o.id))).id;
+      await addDog(ctx, newName, teamId, 'other', 'single');
       setAdding(false);
       setNewName('');
       setAddError('');
@@ -108,7 +114,7 @@ export function DogsScreen() {
 
         <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
           {dogs.map((d) => {
-            const line = progressLine(d.id, sessions, corrections, now);
+            const line = progressLine(d.id, sessions, corrections, odours, now);
             return (
               <li key={d.id}>
                 <Card onClick={() => navigate(`/dog/${d.id}`)}>

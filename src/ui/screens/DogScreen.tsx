@@ -4,7 +4,7 @@ import { db } from '../../data/db';
 import { archiveDog, renameDog } from '../../data/repo';
 import { exportDogReport } from '../../export/run';
 import { formatMinutesOfTarget } from '../../domain/format';
-import { odoursIn, odourById, type OdourGroup } from '../../domain/odours';
+import { odourById, teamOdourGroups } from '../../domain/odours';
 import { IMPRINT_TARGET_S, isImprinted, isRunning, odourTotal } from '../../domain/totals';
 import { useMe } from '../../hooks/useMe';
 import { useNow } from '../../hooks/useNow';
@@ -16,12 +16,10 @@ import { PillToggle } from '../components/PillToggle';
 import { ProgressBar } from '../components/ProgressBar';
 import { Sheet } from '../components/Sheet';
 
-const isGroup = (v: string | null): v is OdourGroup => v === 'narcotics' || v === 'explosives';
-
 export function DogScreen() {
   const { dogId } = useParams();
   const me = useMe();
-  const { dogs, sessions, corrections, loading } = useUnitData();
+  const { dogs, sessions, corrections, odours, catalogue, loading } = useUnitData();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
   const [renaming, setRenaming] = useState(false);
@@ -41,10 +39,14 @@ export function DogScreen() {
   if (loading || !me) return null;
   if (!dog) return <Navigate to="/" replace />;
 
-  const urlGroup = params.get('group');
-  const group: OdourGroup = isGroup(urlGroup)
-    ? urlGroup
-    : (runningHere && odourById(runningHere.odour_id)?.group) || 'narcotics';
+  // The odours of the dog's team, in category tabs. The tab lives in the URL (?cat=<category id>); without a
+  // usable one it is the running odour's category, else the first.
+  const groups = teamOdourGroups(dog.team_id, catalogue);
+  const urlCat = params.get('cat');
+  const runningCat = runningHere && odourById(odours, runningHere.odour_id)?.category_id;
+  const shown = groups.find((g) => g.category.id === urlCat)
+    ?? groups.find((g) => g.category.id === runningCat)
+    ?? groups[0];
   const isTrainer = me.role === 'trainer';
   const trainerCtx = { db, me };
 
@@ -84,10 +86,14 @@ export function DogScreen() {
           </Link>
         } />
       <main className="pad">
-        <PillToggle value={group} onChange={(g) => setParams({ group: g }, { replace: true })} />
+        {groups.length > 0 && shown && (
+          <PillToggle value={shown.category.id} options={groups.map((g) => ({ value: g.category.id, label: g.category.name }))}
+            onChange={(cat) => setParams({ cat }, { replace: true })} />
+        )}
+        {groups.length === 0 && <p style={{ textAlign: 'center', fontWeight: 800 }}>No odours selected for this team</p>}
 
         <ul style={{ listStyle: 'none', margin: '16px 0 0', padding: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
-          {odoursIn(group).map((odour) => {
+          {(shown?.odours ?? []).map((odour) => {
             const total = odourTotal(sessions, corrections, dog.id, odour.id, now);
             const imprinted = isImprinted(total);
             const runningThis = runningHere?.odour_id === odour.id;

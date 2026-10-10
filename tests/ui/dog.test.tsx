@@ -3,14 +3,14 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, ME_KEY } from '../../src/data/db';
-import { ODOURS } from '../../src/domain/odours';
 import type { Dog, Member, Session } from '../../src/domain/types';
 import { FAKE_CLOCK } from '../fakeClock';
+import { ODOURS, dogRow, pick, seedCatalogue } from '../fixtures';
 import { DogScreen } from '../../src/ui/screens/DogScreen';
 
 const trainer: Member = { id: 'mT', unit_id: 'u1', user_id: 'uT', name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
 const handler: Member = { id: 'mH', unit_id: 'u1', user_id: 'uH', name: 'Paul', role: 'handler', joined_at: '', removed_at: null };
-const rex: Dog = { id: 'd1', unit_id: 'u1', name: 'Rex', created_by: 'mT', created_at: '2026-10-01T00:00:00Z', archived_at: null };
+const rex: Dog = dogRow('d1', 'Rex');
 const manual = (id: string, odour: string, seconds: number): Session => ({
   id, unit_id: 'u1', dog_id: 'd1', odour_id: odour, handler_id: 'mH', kind: 'manual', session_date: '2026-10-03',
   started_at: null, ended_at: null, duration_s: seconds, client_clock_offset_s: null, server_received_at: null,
@@ -22,6 +22,7 @@ const running = (id: string, odour: string, startedAt: string): Session => ({
 async function seed(me: Member = trainer, sessions: Session[] = []) {
   await db.meta.put({ key: ME_KEY, value: me });
   await db.members.bulkPut([trainer, handler]);
+  await seedCatalogue(db);
   await db.dogs.put(rex);
   await db.sessions.bulkPut([manual('s1', 'cocaine', 4500), manual('s2', 'mdma', 2520), ...sessions]);
 }
@@ -53,34 +54,76 @@ beforeEach(async () => {
 afterEach(() => vi.useRealTimers());
 
 describe('DogScreen', () => {
-  it('opens on Narcotics and lists the 6 narcotics in spec order', async () => {
+  const namesIn = (category: string) => ODOURS.filter((o) => o.category_id === category).map((o) => o.name)
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+
+  it('opens on the first category and lists its 6 odours by name', async () => {
     await seed();
     renderDog();
     expect(await screen.findByRole('button', { name: 'Narcotics' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('button', { name: 'Explosives' })).toHaveAttribute('aria-pressed', 'false');
-    expect(rowNames()).toEqual(ODOURS.filter((o) => o.group === 'narcotics').map((o) => o.name));
+    expect(rowNames()).toEqual(namesIn('narcotics'));
     expect(rowNames()).toHaveLength(6);
   });
 
-  it('switches to the 11 explosives and keeps the group in the URL', async () => {
+  it('has a tab for each category the team trains on, in the catalogue\'s order', async () => {
+    await seed();
+    renderDog();
+    await screen.findByRole('button', { name: 'Narcotics' });
+    const tabs = within(screen.getByRole('group', { name: 'Odour category' })).getAllByRole('button');
+    expect(tabs.map((t) => t.textContent)).toEqual(['Narcotics', 'Explosives', 'Cadaver', 'Bed bugs']);
+  });
+
+  it('shows only the odours its team has ticked, and only the categories that have any', async () => {
+    await seed();
+    await db.team_odours.bulkPut(ODOURS.map((o) => pick('t1', o.id, false)));
+    await db.team_odours.bulkPut([pick('t1', 'mdma'), pick('t1', 'tnt'), pick('t1', 'viable-eggs')]);
+    renderDog();
+    await screen.findByRole('button', { name: 'Narcotics' });
+    const tabs = within(screen.getByRole('group', { name: 'Odour category' })).getAllByRole('button');
+    expect(tabs.map((t) => t.textContent)).toEqual(['Narcotics', 'Explosives', 'Bed bugs']);
+    expect(rowNames()).toEqual(['MDMA']);
+    await userEvent.click(screen.getByRole('button', { name: 'Explosives' }));
+    expect(rowNames()).toEqual(['TNT']);
+  });
+
+  it('leaves out an archived odour and an archived category', async () => {
+    await seed();
+    await db.odours.update('cocaine', { archived_at: '2026-10-02T00:00:00Z' });
+    await db.odour_categories.update('explosives', { archived_at: '2026-10-02T00:00:00Z' });
+    renderDog();
+    await screen.findByRole('button', { name: 'Narcotics' });
+    expect(screen.queryByRole('button', { name: 'Explosives' })).toBeNull();
+    expect(rowNames()).toEqual(namesIn('narcotics').filter((n) => n !== 'Cocaine'));
+  });
+
+  it('says so when the team has no odours ticked', async () => {
+    await seed();
+    await db.team_odours.clear();
+    renderDog();
+    expect(await screen.findByText('No odours selected for this team')).toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Odour category' })).toBeNull();
+  });
+
+  it('switches to the 11 explosives and keeps the category in the URL', async () => {
     await seed();
     renderDog();
     await userEvent.click(await screen.findByRole('button', { name: 'Explosives' }));
-    expect(rowNames()).toEqual(ODOURS.filter((o) => o.group === 'explosives').map((o) => o.name));
+    expect(rowNames()).toEqual(namesIn('explosives'));
     expect(rowNames()).toHaveLength(11);
     expect(screen.getByRole('button', { name: 'Explosives' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('where')).toHaveTextContent('/dog/d1?group=explosives');
+    expect(screen.getByTestId('where')).toHaveTextContent('/dog/d1?cat=explosives');
   });
 
-  it('opens on the group named in the URL', async () => {
+  it('opens on the category named in the URL', async () => {
     await seed();
-    renderDog('/dog/d1?group=explosives');
+    renderDog('/dog/d1?cat=explosives');
     expect(await screen.findByRole('button', { name: 'Explosives' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByText('TNT')).toBeInTheDocument();
     expect(screen.queryByText('Cocaine')).toBeNull();
   });
 
-  it('comes back from the timer on the same group', async () => {
+  it('comes back from the timer on the same category', async () => {
     await seed();
     renderDog();
     await userEvent.click(await screen.findByRole('button', { name: 'Explosives' }));
@@ -90,19 +133,19 @@ describe('DogScreen', () => {
     expect(await screen.findByRole('button', { name: 'Explosives' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('with no group in the URL, opens on the running odour\'s group', async () => {
+  it('with no category in the URL, opens on the running odour\'s category', async () => {
     await seed(trainer, [running('r', 'tnt', new Date().toISOString())]);
     renderDog();
     expect(await screen.findByRole('button', { name: 'Explosives' })).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/dog\/d1$/); // chosen, not written to the URL
   });
 
-  it('lets the URL win over the running odour, and ignores a junk group', async () => {
+  it('lets the URL win over the running odour, and ignores a junk category', async () => {
     await seed(trainer, [running('r', 'tnt', new Date().toISOString())]);
-    const { unmount } = renderDog('/dog/d1?group=narcotics');
+    const { unmount } = renderDog('/dog/d1?cat=narcotics');
     expect(await screen.findByRole('button', { name: 'Narcotics' })).toHaveAttribute('aria-pressed', 'true');
     unmount();
-    renderDog('/dog/d1?group=junk');
+    renderDog('/dog/d1?cat=junk');
     expect(await screen.findByRole('button', { name: 'Explosives' })).toHaveAttribute('aria-pressed', 'true');
   });
 

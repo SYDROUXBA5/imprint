@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, ME_KEY } from '../../src/data/db';
 import type { Dog, Member, Session } from '../../src/domain/types';
+import { dogRow, seedCatalogue } from '../fixtures';
 import { FAKE_CLOCK } from '../fakeClock';
 
 vi.mock('../../src/data/repo', async (importOriginal) => {
@@ -16,7 +17,7 @@ const { TimerScreen } = await import('../../src/ui/screens/TimerScreen');
 const T0 = '2026-10-05T10:00:00.000Z';
 const hana: Member = { id: 'mA', unit_id: 'u1', user_id: 'uA', name: 'Hana', role: 'handler', joined_at: '', removed_at: null };
 const paul: Member = { id: 'mP', unit_id: 'u1', user_id: 'uP', name: 'Paul', role: 'handler', joined_at: '', removed_at: null };
-const rex: Dog = { id: 'd1', unit_id: 'u1', name: 'Rex', created_by: 'mT', created_at: '2026-10-01T00:00:00Z', archived_at: null };
+const rex: Dog = dogRow('d1', 'Rex');
 const manual = (id: string, odour: string, minutes: number): Session => ({
   id, unit_id: 'u1', dog_id: 'd1', odour_id: odour, handler_id: 'mA', kind: 'manual', session_date: '2026-10-03',
   started_at: null, ended_at: null, duration_s: minutes * 60, client_clock_offset_s: null, server_received_at: null,
@@ -28,6 +29,7 @@ const running = (id: string, odour: string, handler: Member, startedAt = T0): Se
 async function seed(sessions: Session[] = [], me: Member = hana) {
   await db.meta.put({ key: ME_KEY, value: me });
   await db.members.bulkPut([hana, paul]);
+  await seedCatalogue(db);
   await db.dogs.put(rex);
   await db.sessions.bulkPut(sessions);
 }
@@ -243,7 +245,7 @@ describe('TimerScreen', () => {
       await seed();
       renderTimer('tnt');
       await user().click(await screen.findByRole('button', { name: 'Back' }));
-      expect(screen.getByTestId('where')).toHaveTextContent('/dog/d1?group=explosives');
+      expect(screen.getByTestId('where')).toHaveTextContent('/dog/d1?cat=explosives');
     });
 
     it('goes to the dog screen when the odour is unknown', async () => {

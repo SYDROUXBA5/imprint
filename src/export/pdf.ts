@@ -1,7 +1,7 @@
 import { formatDay, formatMinSec, localDate } from '../domain/format';
-import { ODOURS, type OdourGroup } from '../domain/odours';
+import { sortCategories, sortOdours } from '../domain/odours';
 import { IMPRINT_TARGET_S, latestCorrection, odourTotal } from '../domain/totals';
-import type { Correction, Dog, Session } from '../domain/types';
+import type { Correction, Dog, Odour, OdourCategory, Session } from '../domain/types';
 import { imprintedDate } from './imprintedDate';
 
 export interface DogReportInput {
@@ -12,6 +12,9 @@ export interface DogReportInput {
   /** This dog's sessions and the corrections to them. Rows for other dogs are ignored. */
   sessions: Session[];
   corrections: Correction[];
+  /** The categories and, in `odours`, exactly the odours to list: the caller picks them (a category with none is left out). */
+  categories: OdourCategory[];
+  odours: Odour[];
 }
 
 /** The standard PDF fonts draw Latin-1 only. Anything else would come out as garbage, so show "?" instead. */
@@ -28,6 +31,7 @@ const STAMP: [number, number, number] = [192, 50, 43];
 const MARGIN = 14;
 const PAGE_W = 210;
 const ROW_H = 8;
+const PAGE_BOTTOM = 275; // mm; the footer needs the rest
 // Column positions in mm.
 const X_ODOUR = MARGIN + 2;
 const X_TOTAL_RIGHT = 84;
@@ -66,7 +70,9 @@ export async function dogReportPdf(input: DogReportInput): Promise<Blob> {
   doc.text(pdfSafe(`Generated ${formatDay(localDate(generatedAt))} by ${generatedBy}`), MARGIN, 30);
 
   let y = 48;
-  const table = (group: OdourGroup, heading: string) => {
+  const table = (heading: string, list: Odour[]) => {
+    // Start a table on a new page when its heading and first two rows would not fit on this one.
+    if (y + 3 + 5 + 3 + Math.min(list.length, 2) * ROW_H > PAGE_BOTTOM) { doc.addPage(); y = 20; }
     doc.setTextColor(...INK);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(14);
@@ -85,7 +91,8 @@ export async function dogReportPdf(input: DogReportInput): Promise<Blob> {
     doc.text('Sessions', X_SESSIONS_RIGHT, y, { align: 'right' });
     y += 3;
 
-    ODOURS.filter((o) => o.group === group).forEach((odour, i) => {
+    list.forEach((odour, i) => {
+      if (y + ROW_H > PAGE_BOTTOM) { doc.addPage(); y = 20; } // a long table carries on over the page
       const own = sessions.filter((s) => s.odour_id === odour.id);
       const total = odourTotal(sessions, dogCorrections, dog.id, odour.id);
       const date = imprintedDate(own, dogCorrections);
@@ -99,7 +106,7 @@ export async function dogReportPdf(input: DogReportInput): Promise<Blob> {
       doc.setTextColor(...INK);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
-      doc.text(odour.name, X_ODOUR, textY);
+      doc.text(pdfSafe(odour.name), X_ODOUR, textY);
       doc.setFont('helvetica', 'normal');
       doc.text(formatMinSec(total), X_TOTAL_RIGHT, textY, { align: 'right' });
 
@@ -127,10 +134,13 @@ export async function dogReportPdf(input: DogReportInput): Promise<Blob> {
     });
     y += 8;
   };
-  table('narcotics', 'Narcotics');
-  table('explosives', 'Explosives');
+  for (const category of sortCategories(input.categories)) {
+    const list = sortOdours(input.odours.filter((o) => o.category_id === category.id));
+    if (list.length > 0) table(pdfSafe(category.name), list);
+  }
 
   // Footer
+  if (y + 20 > 297 - 10) { doc.addPage(); y = 20; }
   const manual = sessions.filter((s) => s.kind === 'manual' && !isVoided(s)).length;
   doc.setDrawColor(...RULE);
   doc.setLineWidth(0.4);
