@@ -3,7 +3,7 @@ import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-route
 import { db } from '../../data/db';
 import { AlreadyRunningError, startSession, stopSession } from '../../data/repo';
 import { formatClock, formatMinutesOfTarget } from '../../domain/format';
-import { odourById, odourName } from '../../domain/odours';
+import { NOT_IN_CURRENT_LIST, isInTeamList, odourById, odourName } from '../../domain/odours';
 import { IMPRINT_TARGET_S, isRunning, liveElapsed, odourTotal } from '../../domain/totals';
 import type { Session } from '../../domain/types';
 import { useCrossedTarget } from '../../hooks/useCrossedTarget';
@@ -17,7 +17,7 @@ import { ManualEntrySheet } from './ManualEntrySheet';
 export function TimerScreen() {
   const { dogId = '', odourId = '' } = useParams();
   const me = useMe();
-  const { dogs, members, sessions, corrections, odours, loading } = useUnitData();
+  const { dogs, members, sessions, corrections, odours, catalogue, loading } = useUnitData();
   const navigate = useNavigate();
   const location = useLocation();
   const [busy, setBusy] = useState(false);
@@ -100,6 +100,9 @@ export function TimerScreen() {
             <span aria-hidden="true">•</span> {dog.name} <span aria-hidden="true">•</span>
           </h1>
           <h2 style={{ fontSize: 40, lineHeight: 1.1, overflowWrap: 'anywhere' }}>{odour.name}</h2>
+          {!isInTeamList(dog.team_id, odour.id, catalogue) && (
+            <p className="muted" style={{ margin: '4px 0 0', fontWeight: 800 }}>{NOT_IN_CURRENT_LIST}</p>
+          )}
         </header>
 
         <CompassRing totalS={total}>

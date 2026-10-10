@@ -82,6 +82,10 @@ export function buildDemoData(now: Date) {
   } satisfies OdourCategory);
   odours.push({
     id: 'banknotes', unit_id: unitId, category_id: 'cat-currency', name: 'Banknotes', created_at: iso(day(12, 11)), archived_at: null,
+  } satisfies Odour, {
+    // Archived, so the Odours screen has an Archived section (with Restore) to show.
+    id: 'counterfeit-ink', unit_id: unitId, category_id: 'cat-currency', name: 'Counterfeit ink', created_at: iso(day(12, 11, 5)),
+    archived_at: iso(day(5, 15)),
   } satisfies Odour);
 
   const team = (id: string, name: string, created: Date, archived: Date | null = null): Team => ({
@@ -183,6 +187,7 @@ export function buildDemoData(now: Date) {
   timed('m1', 'demo-moss', 'cocaine', jess, minsAgo(90), 12 * 60 + 30);
   manual('m2', 'demo-moss', 'banknotes', jess, 1, 20);
   manual('m3', 'demo-moss', 'live-bed-bugs', tom, 2, 15);
+  manual('m4', 'demo-moss', 'heroin', tom, 2, 10); // Moss was moved here from Detection; Customs does not train on heroin: "(not in current list)" in the log
 
   // Scout: in the archived team.
   timed('s1', 'demo-scout', 'cocaine', tom, day(20, 10), 18 * 60);

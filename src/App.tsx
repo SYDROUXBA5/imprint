@@ -11,6 +11,7 @@ import { ArchivedScreen } from './ui/screens/ArchivedScreen';
 import { DogScreen } from './ui/screens/DogScreen';
 import { LogScreen } from './ui/screens/LogScreen';
 import { MembersScreen } from './ui/screens/MembersScreen';
+import { OdoursScreen } from './ui/screens/OdoursScreen';
 import { TeamDogsScreen } from './ui/screens/TeamDogsScreen';
 import { TeamsScreen } from './ui/screens/TeamsScreen';
 import { TimerScreen } from './ui/screens/TimerScreen';
@@ -58,6 +59,7 @@ export function AppRoutes({ me }: { me: Member }) {
       <Route path="/dog/:dogId/timer/:odourId" element={<TimerScreen />} />
       <Route path="/dog/:dogId/log" element={<LogRoute me={me} />} />
       <Route path="/members" element={trainerOnly(me, <MembersScreen />)} />
+      <Route path="/odours" element={trainerOnly(me, <OdoursScreen />)} />
       <Route path="/archived" element={trainerOnly(me, <ArchivedScreen />)} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -2,7 +2,7 @@ import { useMemo, useState, type CSSProperties } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { needsClockCheck, overlappingSessionIds } from '../../domain/flags';
 import { formatClock, formatDay, formatMinSec, localDate } from '../../domain/format';
-import { odourName, sortOdours } from '../../domain/odours';
+import { NOT_IN_CURRENT_LIST, isInTeamList, odourName, sortOdours } from '../../domain/odours';
 import { trainedOdours } from '../../domain/progress';
 import { currentDuration, isRunning, latestCorrection, liveElapsed } from '../../domain/totals';
 import type { Correction, Member, Session } from '../../domain/types';
@@ -23,12 +23,15 @@ const sortKey = (s: Session) => s.started_at ?? s.session_date;
 
 const dayOf = (iso: string) => formatDay(localDate(new Date(iso)), false);
 
+/** Beside an odour name: it is not in the team's current list any more. */
+const Marker = () => <span className="muted" style={{ marginLeft: 6, fontSize: 14, fontWeight: 700 }}>{NOT_IN_CURRENT_LIST}</span>;
+
 interface Editing { session: Session; mode: 'correct' | 'void' }
 
 export function LogScreen() {
   const { dogId = '' } = useParams();
   const me = useMe();
-  const { dogs, members, sessions, corrections, odours, loading } = useUnitData();
+  const { dogs, members, sessions, corrections, odours, catalogue, loading } = useUnitData();
   const navigate = useNavigate();
   const [odourFilter, setOdourFilter] = useState('');
   const [editing, setEditing] = useState<Editing | null>(null);
@@ -56,6 +59,10 @@ export function LogScreen() {
   const totals = trainedOdours(dog.id, dogSessions, corrections, odours, now);
   const loggedOdours = sortOdours(odours.filter((o) => dogSessions.some((s) => s.odour_id === o.id)));
   const shown = odourFilter ? sorted.filter((s) => s.odour_id === odourFilter) : sorted;
+  // Time logged on an odour the team no longer trains on stays here, marked (spec §13.4).
+  const notListed = (odourId: string) => !isInTeamList(dog.team_id, odourId, catalogue);
+  const labelOf = (odourId: string) =>
+    `${odourName(odours, odourId)}${notListed(odourId) ? ` ${NOT_IN_CURRENT_LIST}` : ''}`;
 
   return (
     <div className="screen">
@@ -71,7 +78,7 @@ export function LogScreen() {
                   display: 'flex', gap: 8, alignItems: 'baseline', padding: '6px 12px',
                   border: '1.5px solid var(--ink)', borderRadius: 'var(--radius)', background: 'var(--paper)',
                 }}>
-                  <span style={{ fontWeight: 800 }}>{t.name}</span>
+                  <span style={{ fontWeight: 800 }}>{t.name}{notListed(t.odourId) && <Marker />}</span>
                   <span className="num">{formatMinSec(t.totalS)}</span>
                 </li>
               ))}
@@ -84,7 +91,7 @@ export function LogScreen() {
             <label className="label" htmlFor="log-odour" style={{ marginTop: 0 }}>Odour</label>
             <select id="log-odour" className="field" value={odourFilter} onChange={(e) => setOdourFilter(e.target.value)}>
               <option value="">All odours</option>
-              {loggedOdours.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              {loggedOdours.map((o) => <option key={o.id} value={o.id}>{labelOf(o.id)}</option>)}
             </select>
           </div>
         )}
@@ -98,7 +105,7 @@ export function LogScreen() {
         }}>
           {shown.map((s) => (
             <LogRow key={s.id} session={s} corrections={corrections} now={now} nameOf={nameOf} odourLabel={odourName(odours, s.odour_id)}
-              flagged={overlapping.has(s.id)} isTrainer={isTrainer}
+              notListed={notListed(s.odour_id)} flagged={overlapping.has(s.id)} isTrainer={isTrainer}
               onEdit={(mode) => setEditing({ session: s, mode })} />
           ))}
         </ul>
@@ -108,7 +115,7 @@ export function LogScreen() {
         <CorrectionSheet key={`${editing.session.id}-${editing.mode}`} me={me as Member}
           sessionId={editing.session.id} mode={editing.mode}
           currentS={currentDuration(editing.session, corrections)}
-          summary={`${odourName(odours, editing.session.odour_id)} · ${formatDay(editing.session.session_date)} · ${nameOf(editing.session.handler_id)}`}
+          summary={`${labelOf(editing.session.odour_id)} · ${formatDay(editing.session.session_date)} · ${nameOf(editing.session.handler_id)}`}
           onClose={() => setEditing(null)} />
       )}
     </div>
@@ -121,12 +128,13 @@ interface LogRowProps {
   now: number;
   nameOf: (memberId: string) => string;
   odourLabel: string;
+  notListed: boolean;
   flagged: boolean;
   isTrainer: boolean;
   onEdit: (mode: 'correct' | 'void') => void;
 }
 
-function LogRow({ session: s, corrections, now, nameOf, odourLabel: odour, flagged, isTrainer, onEdit }: LogRowProps) {
+function LogRow({ session: s, corrections, now, nameOf, odourLabel: odour, notListed, flagged, isTrainer, onEdit }: LogRowProps) {
   const date = formatDay(s.session_date);
   const correction = latestCorrection(s.id, corrections);
   const running = isRunning(s, corrections);
@@ -140,7 +148,7 @@ function LogRow({ session: s, corrections, now, nameOf, odourLabel: odour, flagg
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 800 }}>{date}</div>
           <div style={{ fontSize: 20, fontWeight: 800, overflowWrap: 'anywhere' }}>
-            <span>{odour}</span>
+            <span>{odour}{notListed && <Marker />}</span>
           </div>
           <div>
             <span>{nameOf(s.handler_id)}</span>

@@ -47,31 +47,36 @@ beforeEach(async () => {
 });
 
 describe('a handler: hidden controls', () => {
-  it('home: no Members, Odours or Archived links', async () => {
+  it('home: no "+ New team", Members, Odours or Archived', async () => {
     await seed(tess);
     const { unmount } = await renderAt(tess, '/');
     await screen.findByRole('link', { name: 'Members' });
+    expect(screen.getByRole('button', { name: '+ New team' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Odours' })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /^Archived/ })).toBeInTheDocument();
     unmount();
 
     await renderAt(paul, '/');
     await screen.findByRole('button', { name: /Alpha/ });
+    expect(screen.queryByRole('button', { name: /new team/i })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Members' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Odours' })).toBeNull();
     expect(screen.queryByRole('link', { name: /Archived/ })).toBeNull();
     expect(screen.queryByRole('link', { name: /Team$/ })).toBeNull();
   });
 
-  it('team: no "+ Add dog"', async () => {
+  it('team: no "+ Add dog" and no Settings', async () => {
     await seed(tess);
     const { unmount } = await renderAt(tess, '/team/t1');
     expect(await screen.findByRole('button', { name: '+ Add dog' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
     unmount();
 
     await renderAt(paul, '/team/t1');
     await screen.findByRole('button', { name: /Rex/ });
     expect(screen.queryByRole('button', { name: '+ Add dog' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /settings/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /archive/i })).toBeNull();
   });
 
   it('dog: no Log link, Edit, Archive or report', async () => {
@@ -97,6 +102,29 @@ describe('a handler: redirected routes', () => {
     await homeHeading();
     expect(screen.queryByTestId('invite-code')).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Members' })).toBeNull();
+  });
+
+  it('/odours goes to the teams, with no catalogue controls', async () => {
+    await seed(paul);
+    await renderAt(paul, '/odours');
+    await homeHeading();
+    expect(screen.queryByRole('heading', { name: 'Odours' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Add category|Add odour|Rename|Archive/ })).toBeNull();
+  });
+
+  it('/odours is the catalogue for a trainer', async () => {
+    await seed(tess);
+    await renderAt(tess, '/odours');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Odours' })).toBeInTheDocument();
+  });
+
+  it('/members and /archived are the real screens for a trainer', async () => {
+    await seed(tess);
+    const { unmount } = await renderAt(tess, '/members');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Members' })).toBeInTheDocument();
+    unmount();
+    await renderAt(tess, '/archived');
+    expect(await screen.findByRole('heading', { level: 1, name: 'Archived' })).toBeInTheDocument();
   });
 
   it('/archived goes to the teams, with no Restore or Delete forever', async () => {

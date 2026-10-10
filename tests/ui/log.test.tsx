@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, ME_KEY } from '../../src/data/db';
 import type { Correction, Dog, Member, Session } from '../../src/domain/types';
-import { dogRow, seedCatalogue } from '../fixtures';
+import { dogRow, pick, seedCatalogue } from '../fixtures';
 import { LogScreen } from '../../src/ui/screens/LogScreen';
 
 const tess: Member = { id: 'mT', unit_id: 'u1', user_id: 'uT', name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
@@ -333,6 +333,59 @@ describe('LogScreen', () => {
       const row = within(await rowFor('Cannabis'));
       await waitFor(() => expect(row.queryByText('Voided')).toBeNull());
       expect(row.getByText('Corrected by Tess', { exact: false })).toBeInTheDocument();
+    });
+  });
+
+  describe('odours that are not in the team\'s current list', () => {
+    const NOT_LISTED = '(not in current list)';
+
+    it('marks the rows, the total and the filter of an odour the team has unticked, and only those', async () => {
+      await seed(tess);
+      await db.team_odours.put(pick('t1', 'mdma', false));
+      renderLog();
+      for (const li of await rows()) {
+        const marked = li.textContent?.includes('MDMA');
+        if (marked) expect(within(li).getByText(NOT_LISTED)).toBeInTheDocument();
+        else expect(within(li).queryByText(NOT_LISTED)).toBeNull();
+      }
+      const totals = within(screen.getByRole('region', { name: 'Totals' }));
+      expect(totals.getByText('MDMA').nextSibling).toHaveTextContent('40:00'); // still counted
+      expect(within(totals.getByText('MDMA')).getByText(NOT_LISTED)).toBeInTheDocument();
+      expect(within(totals.getByText('Cocaine')).queryByText(NOT_LISTED)).toBeNull();
+      expect(screen.getByRole('option', { name: `MDMA ${NOT_LISTED}` })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Cocaine' })).toBeInTheDocument();
+    });
+
+    it('marks an odour that has been archived, with its name still read from the catalogue', async () => {
+      await seed(tess);
+      await db.odours.update('cocaine', { archived_at: '2026-10-09T00:00:00Z' });
+      renderLog();
+      const row = within(await rowFor('Cocaine'));
+      expect(row.getByText(NOT_LISTED)).toBeInTheDocument();
+    });
+
+    it('marks an odour whose category was archived', async () => {
+      await seed(tess);
+      await db.odour_categories.update('explosives', { archived_at: '2026-10-09T00:00:00Z' });
+      await db.sessions.put({ ...SESSIONS[1], id: 'tnt1', odour_id: 'tnt' });
+      renderLog();
+      expect(within(await rowFor('TNT')).getByText(NOT_LISTED)).toBeInTheDocument();
+    });
+
+    it('marks nothing while every odour is in the list', async () => {
+      await seed(tess);
+      renderLog();
+      await rows();
+      expect(screen.queryByText(NOT_LISTED)).toBeNull();
+    });
+
+    it('says it in the correction sheet too', async () => {
+      await seed(tess);
+      await db.team_odours.put(pick('t1', 'mdma', false));
+      renderLog();
+      const row = within(await rowFor('MDMA'));
+      await userEvent.click(row.getAllByRole('button', { name: /^Correct MDMA/ })[0]);
+      expect(within(await screen.findByRole('dialog')).getByText(new RegExp(`^MDMA ${NOT_LISTED.replace(/[()]/g, '\\$&')} · `))).toBeInTheDocument();
     });
   });
 });

@@ -12,6 +12,7 @@ import { DogDrawing } from '../components/DogDrawing';
 import { HeaderBar } from '../components/HeaderBar';
 import { RunningBanner } from '../components/RunningBanner';
 import { SyncBadge } from '../components/SyncBadge';
+import { NewTeamSheet } from './NewTeamSheet';
 import { linkButton, plural } from '../shared';
 
 const NO_SYNC = { pending: 0, rejected: 0, stale: false };
@@ -19,10 +20,11 @@ const NO_SYNC = { pending: 0, rejected: 0, stale: false };
 /** Home: the unit's active teams. A trainer also gets the way to Members, Odours and Archived. */
 export function TeamsScreen() {
   const me = useMe();
-  const { dogs, archivedDogs, teams, archivedTeams, odours, members, sessions, corrections, loading } = useUnitData();
+  const { dogs, archivedDogs, teams, archivedTeams, odours, catalogue, members, sessions, corrections, loading } = useUnitData();
   const navigate = useNavigate();
   const sync = useLiveQuery(() => syncStatus(db), [], NO_SYNC);
   const [notices, setNotices] = useState<string[]>([]);
+  const [creating, setCreating] = useState(false);
 
   // Reading clears them, so keep what we get (and never overwrite it with the empty second read).
   useEffect(() => {
@@ -60,6 +62,12 @@ export function TeamsScreen() {
         </p>
 
         {isTrainer && (
+          <button type="button" className="btn btn-primary" style={{ width: '100%', marginBottom: 12 }}
+            onClick={() => setCreating(true)}>
+            + New team
+          </button>
+        )}
+        {isTrainer && (
           <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
             <Link to="/members" className="btn" style={{ flex: 1 }}>Members</Link>
             <Link to="/odours" className="btn" style={{ flex: 1 }}>Odours</Link>
@@ -70,6 +78,7 @@ export function TeamsScreen() {
           <div style={{ display: 'grid', justifyItems: 'center', gap: 8, padding: '24px 0', textAlign: 'center' }}>
             <DogDrawing />
             <h2 style={{ fontSize: 22 }}>No teams yet</h2>
+            {isTrainer && <p style={{ margin: 0 }}>Create your first team</p>}
           </div>
         )}
 
@@ -102,6 +111,8 @@ export function TeamsScreen() {
           </Link>
         )}
       </main>
+
+      {isTrainer && <NewTeamSheet open={creating} onClose={() => setCreating(false)} catalogue={catalogue} />}
     </div>
   );
 }

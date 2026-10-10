@@ -69,9 +69,11 @@ describe('demo seed', () => {
     expect(categories.slice(0, 4).map((c) => c.name)).toEqual(DEFAULT_CATALOGUE.map((c) => c.name));
     const custom = categories.slice(4);
     expect(custom.map((c) => c.name)).toEqual(['Currency']);
-    expect(odours.filter((o) => o.category_id === custom[0].id).map((o) => o.name)).toEqual(['Banknotes']);
-    expect(odours).toHaveLength(DEFAULT_CATALOGUE.reduce((n, c) => n + c.odours.length, 0) + 1);
-    expect(categories.every((c) => c.archived_at === null) && odours.every((o) => o.archived_at === null)).toBe(true);
+    expect(odours.filter((o) => o.category_id === custom[0].id && o.archived_at === null).map((o) => o.name)).toEqual(['Banknotes']);
+    // One archived odour, so the Odours screen has an Archived section to show; nothing else is archived.
+    expect(odours.filter((o) => o.archived_at !== null).map((o) => o.name)).toEqual(['Counterfeit ink']);
+    expect(odours).toHaveLength(DEFAULT_CATALOGUE.reduce((n, c) => n + c.odours.length, 0) + 2);
+    expect(categories.every((c) => c.archived_at === null)).toBe(true);
     const teamOdours = await db.team_odours.toArray();
     const listOf = (teamId: string) => teamOdours.filter((t) => t.team_id === teamId && t.selected).map((t) => t.odour_id).sort().join(',');
     const lists = new Set((await db.teams.toArray()).map((t) => listOf(t.id)));
@@ -79,14 +81,18 @@ describe('demo seed', () => {
     expect([...lists].every((l) => l.length > 0)).toBe(true);
   });
 
-  it('logs every session on an odour of the catalogue that the dog\'s team trains on', async () => {
+  it('logs every session on an odour of the catalogue, all but one on an odour the dog\'s team trains on', async () => {
     await seedDemo('trainer', { db, now: NOW });
     const { dogs, sessions } = await load();
     const catalogue = { categories: await db.odour_categories.toArray(), odours: await db.odours.toArray(), teamOdours: await db.team_odours.toArray() };
+    const unlisted: string[] = [];
     for (const s of sessions) {
       const dog = dogs.find((d) => d.id === s.dog_id)!;
-      expect(isInTeamList(dog.team_id, s.odour_id, catalogue), `${dog.name} / ${s.odour_id}`).toBe(true);
+      expect(catalogue.odours.some((o) => o.id === s.odour_id), `${dog.name} / ${s.odour_id}`).toBe(true);
+      if (!isInTeamList(dog.team_id, s.odour_id, catalogue)) unlisted.push(`${dog.name} / ${s.odour_id}`);
     }
+    // Moss did some heroin work, then moved to Customs, which does not train on it: the log shows "(not in current list)".
+    expect(unlisted).toEqual(['Moss / heroin']);
   });
 
   it('signs in as the trainer or the handler that was asked for', async () => {

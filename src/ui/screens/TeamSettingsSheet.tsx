@@ -1,0 +1,159 @@
+import { useState, type FormEvent } from 'react';
+import { db } from '../../data/db';
+import { archiveTeam, renameTeam, setTeamOdours } from '../../data/teams';
+import { selectedOdourIds } from '../../domain/odours';
+import type { Catalogue, Team } from '../../domain/types';
+import { useMe } from '../../hooks/useMe';
+import { OdourPicker } from '../components/OdourPicker';
+import { Sheet } from '../components/Sheet';
+import { plural, stickyFooter } from '../shared';
+
+interface TeamSettingsSheetProps {
+  open: boolean;
+  onClose: () => void;
+  team: Team;
+  catalogue: Catalogue;
+  /** True while a timer runs on any dog of the team: the team cannot be archived then. */
+  timerRunning: boolean;
+}
+
+type View = 'main' | 'odours' | 'archive';
+const TITLES: Record<View, string> = { main: 'Team settings', odours: 'Team odours', archive: 'Archive team' };
+
+/**
+ * A team's settings (spec §13.1): rename, which odours it trains on, archive (after asking). Trainers only.
+ * One sheet with three views, so there is never a sheet on top of a sheet.
+ */
+export function TeamSettingsSheet({ open, onClose, team, catalogue, timerRunning }: TeamSettingsSheetProps) {
+  const [view, setView] = useState<View>('main');
+  const close = () => { setView('main'); onClose(); }; // it always opens on the main view
+  return (
+    <Sheet open={open} onClose={close} title={TITLES[view]}>
+      {/* Mounted only while open, so the fields start fresh every time. */}
+      <Body team={team} catalogue={catalogue} timerRunning={timerRunning} view={view} setView={setView} onClose={close} />
+    </Sheet>
+  );
+}
+
+interface BodyProps {
+  team: Team;
+  catalogue: Catalogue;
+  timerRunning: boolean;
+  view: View;
+  setView: (v: View) => void;
+  onClose: () => void;
+}
+
+function Body({ team, catalogue, timerRunning, view, setView, onClose }: BodyProps) {
+  const me = useMe();
+  const { categories, odours, teamOdours } = catalogue;
+  const [name, setName] = useState(team.name);
+  // What is saved, until the trainer changes a tick; then their draft.
+  const [draft, setDraft] = useState<Set<string> | null>(null);
+  const picked = draft ?? selectedOdourIds(teamOdours, team.id);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const offered = new Set(odours.filter((o) => o.archived_at === null).map((o) => o.id));
+  const savedCount = [...selectedOdourIds(teamOdours, team.id)].filter((id) => offered.has(id)).length;
+  const chosen = [...picked].filter((id) => offered.has(id));
+
+  /** Run a change; show why it failed; true when it went through. */
+  async function run(change: () => Promise<void>, failure: string): Promise<boolean> {
+    if (!me || busy) return false;
+    setBusy(true);
+    setError('');
+    try {
+      await change();
+      setBusy(false);
+      return true;
+    } catch (err) {
+      setError(err instanceof Error ? err.message : failure);
+      setBusy(false);
+      return false;
+    }
+  }
+
+  async function saveName(e: FormEvent) {
+    e.preventDefault();
+    if (await run(() => renameTeam({ db, me: me! }, team.id, name), 'Could not rename the team.')) onClose();
+  }
+
+  async function saveOdours() {
+    const ok = await run(() => setTeamOdours({ db, me: me! }, team.id, chosen), 'Could not save the odours.');
+    if (ok) setView('main');
+  }
+
+  function askToArchive() {
+    setError('');
+    if (timerRunning) { setError('Stop the running timer before archiving'); return; }
+    setView('archive');
+  }
+
+  // The team leaves the active list as soon as this is saved, and the screen then goes home by itself.
+  const archive = () => run(() => archiveTeam({ db, me: me! }, team.id), 'Could not archive the team.');
+
+  if (view === 'odours') {
+    return (
+      <div>
+        <div style={{ marginTop: 12 }}>
+          <OdourPicker categories={categories} odours={odours} selected={picked} onChange={setDraft} />
+        </div>
+        {chosen.length === 0 && <p className="muted" style={{ margin: '0 0 4px', fontWeight: 700 }}>Pick at least one odour</p>}
+        {error && <p role="alert" className="error">{error}</p>}
+        <div style={{ ...stickyFooter, display: 'grid', gap: 8 }}>
+          <button type="button" className="btn btn-primary" style={{ width: '100%' }}
+            disabled={chosen.length === 0 || busy} onClick={saveOdours}>
+            Save odours
+          </button>
+          <button type="button" className="btn" style={{ width: '100%' }}
+            onClick={() => { setError(''); setDraft(null); setView('main'); }}>
+            Back to settings
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'archive') {
+    return (
+      <div>
+        <p style={{ fontSize: 18, overflowWrap: 'anywhere' }}>
+          {`Archive ${team.name}? It and its dogs disappear for everyone; you can restore it from Archived.`}
+        </p>
+        {error && <p role="alert" className="error">{error}</p>}
+        <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+          <button type="button" className="btn" style={{ flex: 1 }} onClick={() => { setError(''); setView('main'); }}>Cancel</button>
+          <button type="button" className="btn btn-primary" style={{ flex: 1 }} disabled={busy} onClick={archive}>
+            {`Archive ${team.name}`}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <form onSubmit={saveName}>
+        <label className="label" htmlFor="team-settings-name">Team name</label>
+        <input id="team-settings-name" className="field" value={name} autoComplete="off" onChange={(e) => setName(e.target.value)} />
+        <button type="submit" className="btn" disabled={busy || !name.trim() || name.trim() === team.name}
+          style={{ width: '100%', marginTop: 12 }}>
+          Save name
+        </button>
+      </form>
+
+      <p className="label">Odours</p>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <span className="num" style={{ fontWeight: 800 }}>{`${plural(savedCount, 'odour')} selected`}</span>
+        <button type="button" className="btn" onClick={() => { setError(''); setView('odours'); }}>Choose odours</button>
+      </div>
+
+      {error && <p role="alert" className="error">{error}</p>}
+      <button type="button" className="btn" onClick={askToArchive}
+        style={{ width: '100%', marginTop: 24, color: 'var(--stamp)', borderColor: 'var(--stamp)' }}>
+        Archive team
+      </button>
+    </div>
+  );
+}

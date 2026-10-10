@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, ME_KEY } from '../../src/data/db';
 import type { Dog, Member, Session } from '../../src/domain/types';
-import { dogRow, seedCatalogue } from '../fixtures';
+import { dogRow, pick, seedCatalogue } from '../fixtures';
 import { FAKE_CLOCK } from '../fakeClock';
 
 vi.mock('../../src/data/repo', async (importOriginal) => {
@@ -266,5 +266,21 @@ describe('TimerScreen', () => {
       await user().click(await screen.findByRole('button', { name: 'Add a session I forgot to time' }));
       expect(screen.getByRole('dialog', { name: 'Add a session I forgot to time' })).toBeInTheDocument();
     });
+  });
+
+  it('marks an odour the team does not train on any more, and still lets a timer be run on it', async () => {
+    await seed();
+    await db.team_odours.put(pick('t1', 'mdma', false));
+    renderTimer();
+    expect(await screen.findByRole('heading', { name: 'MDMA' })).toBeInTheDocument();
+    expect(screen.getByText('(not in current list)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Start' })).toBeInTheDocument();
+  });
+
+  it('shows no such mark for an odour in the team\'s list', async () => {
+    await seed();
+    renderTimer();
+    await screen.findByRole('heading', { name: 'MDMA' });
+    expect(screen.queryByText('(not in current list)')).toBeNull();
   });
 });

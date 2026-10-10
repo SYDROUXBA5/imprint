@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -115,10 +115,11 @@ describe('TeamsScreen (home)', () => {
     expect(screen.queryByRole('link', { name: /Archived/ })).toBeNull();
   });
 
-  it('has the field-guide heading, and an empty state', async () => {
+  it('has the field-guide heading, and an empty state that points a trainer to the first team', async () => {
     await db.meta.put({ key: ME_KEY, value: trainer });
     renderHome();
     expect(await screen.findByText('No teams yet')).toBeInTheDocument();
+    expect(screen.getByText('Create your first team')).toBeInTheDocument();
     expect(screen.getByText(/Trainer.s field guide/i)).toBeInTheDocument();
   });
 
@@ -138,6 +139,7 @@ describe('TeamsScreen (home)', () => {
     await db.meta.put({ key: ME_KEY, value: handler });
     renderHome();
     expect(await screen.findByText('No teams yet')).toBeInTheDocument();
+    expect(screen.queryByText('Create your first team')).toBeNull();
     expect(screen.queryByRole('link')).toBeNull();
   });
 
@@ -159,5 +161,92 @@ describe('TeamsScreen (home)', () => {
     renderHome();
     await screen.findByRole('button', { name: /Alpha/ });
     expect(screen.queryByText('A session for a deleted dog was discarded.')).toBeNull();
+  });
+
+  describe('+ New team', () => {
+    const sheet = async () => within(await screen.findByRole('dialog'));
+    const open = async () => {
+      await seed(trainer);
+      renderHome();
+      await userEvent.click(await screen.findByRole('button', { name: '+ New team' }));
+      return sheet();
+    };
+
+    it('asks for a name and the odours the team trains, and Create team waits for both', async () => {
+      const dialog = await open();
+      const create = dialog.getByRole('button', { name: 'Create team' });
+      expect(dialog.getByLabelText('Team name')).toHaveValue('');
+      expect(dialog.getByRole('group', { name: 'Narcotics' })).toBeInTheDocument();
+      expect(dialog.getAllByRole('checkbox').filter((b) => (b as HTMLInputElement).checked)).toHaveLength(0); // nothing is chosen for you
+      expect(create).toBeDisabled();
+      await userEvent.type(dialog.getByLabelText('Team name'), 'Charlie');
+      expect(create).toBeDisabled();
+      expect(dialog.getByText('Pick at least one odour')).toBeInTheDocument();
+      await userEvent.click(dialog.getByRole('checkbox', { name: 'Cocaine' }));
+      expect(create).toBeEnabled();
+      expect(dialog.queryByText('Pick at least one odour')).toBeNull();
+      await userEvent.clear(dialog.getByLabelText('Team name'));
+      expect(create).toBeDisabled();
+    });
+
+    it('needs an odour: unticking the last one disables Create team again', async () => {
+      const dialog = await open();
+      await userEvent.type(dialog.getByLabelText('Team name'), 'Charlie');
+      await userEvent.click(dialog.getByRole('checkbox', { name: 'Cocaine' }));
+      await userEvent.click(dialog.getByRole('checkbox', { name: 'Cocaine' }));
+      expect(dialog.getByRole('button', { name: 'Create team' })).toBeDisabled();
+    });
+
+    it('creates the team with exactly the ticked odours, through the outbox, and shows its card', async () => {
+      const dialog = await open();
+      await userEvent.type(dialog.getByLabelText('Team name'), '  Charlie ');
+      await userEvent.click(dialog.getByRole('button', { name: 'Select all Cadaver' }));
+      await userEvent.click(dialog.getByRole('checkbox', { name: 'Cocaine' }));
+      await userEvent.click(dialog.getByRole('button', { name: 'Create team' }));
+      const card = await screen.findByRole('button', { name: /Charlie/ });
+      expect(within(card).getByText('0 dogs')).toBeInTheDocument();
+      expect(screen.queryByRole('dialog')).toBeNull();
+      const made = (await db.teams.toArray()).find((t) => t.name === 'Charlie')!;
+      const picks = await db.team_odours.where('team_id').equals(made.id).toArray();
+      expect(picks.filter((p) => p.selected).map((p) => p.odour_id).sort()).toEqual(['cocaine', 'human-remains']);
+      expect((await db.outbox.toArray()).map((i) => i.table)).toEqual(['teams', 'team_odours', 'team_odours']);
+    });
+
+    it('offers no archived odour or category', async () => {
+      await seed(trainer);
+      await db.odours.update('cocaine', { archived_at: '2026-10-02T00:00:00Z' });
+      await db.odour_categories.update('cadaver', { archived_at: '2026-10-02T00:00:00Z' });
+      renderHome();
+      await userEvent.click(await screen.findByRole('button', { name: '+ New team' }));
+      const dialog = await sheet();
+      expect(dialog.queryByRole('checkbox', { name: 'Cocaine' })).toBeNull();
+      expect(dialog.queryByRole('group', { name: 'Cadaver' })).toBeNull();
+    });
+
+    it('Close discards the draft, and the next one opens empty', async () => {
+      const dialog = await open();
+      await userEvent.type(dialog.getByLabelText('Team name'), 'Charlie');
+      await userEvent.click(dialog.getByRole('checkbox', { name: 'Cocaine' }));
+      await userEvent.click(dialog.getByRole('button', { name: 'Close' }));
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(await db.teams.count()).toBe(3);
+      await userEvent.click(screen.getByRole('button', { name: '+ New team' }));
+      const again = await sheet();
+      expect(again.getByLabelText('Team name')).toHaveValue('');
+      expect(again.getByRole('checkbox', { name: 'Cocaine' })).not.toBeChecked();
+    });
+
+    it('is the way out of the empty state for a trainer with no teams', async () => {
+      await seedCatalogue(db, []);
+      await db.meta.put({ key: ME_KEY, value: trainer });
+      renderHome();
+      await userEvent.click(await screen.findByRole('button', { name: '+ New team' }));
+      const dialog = await sheet();
+      await userEvent.type(dialog.getByLabelText('Team name'), 'First');
+      await userEvent.click(dialog.getByRole('button', { name: 'Select all Bed bugs' }));
+      await userEvent.click(dialog.getByRole('button', { name: 'Create team' }));
+      await waitFor(() => expect(screen.queryByText('No teams yet')).toBeNull());
+      expect(await screen.findByRole('button', { name: /First/ })).toBeInTheDocument();
+    });
   });
 });

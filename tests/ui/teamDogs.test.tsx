@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
@@ -231,6 +231,114 @@ describe('TeamDogsScreen', () => {
     await screen.findByRole('button', { name: /Rex/ });
     await db.teams.update('t1', { archived_at: '2026-10-09T00:00:00Z' }); // done on another phone
     expect(await screen.findByTestId('where')).toHaveTextContent(/^\/$/);
+  });
+
+  describe('team settings', () => {
+    const open = async () => {
+      await seed(trainer);
+      renderTeam();
+      await userEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+      return sheet();
+    };
+
+    it('opens from the header with the team name, its odour count and Archive', async () => {
+      const dialog = await open();
+      expect(dialog.getByLabelText('Team name')).toHaveValue('Alpha');
+      expect(dialog.getByText('20 odours selected')).toBeInTheDocument();
+      expect(dialog.getByRole('button', { name: 'Choose odours' })).toBeInTheDocument();
+      expect(dialog.getByRole('button', { name: 'Archive team' })).toBeInTheDocument();
+    });
+
+    it('renames the team', async () => {
+      const dialog = await open();
+      const save = dialog.getByRole('button', { name: 'Save name' });
+      const field = dialog.getByLabelText('Team name');
+      expect(save).toBeDisabled(); // unchanged
+      await userEvent.clear(field);
+      expect(save).toBeDisabled();
+      await userEvent.type(field, 'Alpha Two');
+      await userEvent.click(save);
+      expect(await screen.findByRole('heading', { level: 1, name: 'Alpha Two' })).toBeInTheDocument();
+      expect((await db.outbox.toArray()).map((i) => i.row)).toEqual([{ id: 't1', name: 'Alpha Two' }]);
+    });
+
+    it('changes the odours the team trains on', async () => {
+      const dialog = await open();
+      await userEvent.click(dialog.getByRole('button', { name: 'Choose odours' }));
+      expect(dialog.getByRole('checkbox', { name: 'Cocaine' })).toBeChecked();
+      await userEvent.click(dialog.getByRole('checkbox', { name: 'Cocaine' }));
+      await userEvent.click(dialog.getByRole('button', { name: 'Select all Cadaver' }));
+      await userEvent.click(dialog.getByRole('button', { name: 'Save odours' }));
+      expect(await dialog.findByLabelText('Team name')).toBeInTheDocument(); // back on the settings view
+      expect(dialog.getByText('18 odours selected')).toBeInTheDocument();
+      expect((await db.team_odours.get('t1:cocaine'))!.selected).toBe(false);
+      expect((await db.team_odours.get('t1:human-remains'))!.selected).toBe(false); // it was ticked, so "Select all" cleared it
+      expect((await db.outbox.toArray()).map((i) => `${i.table}:${i.op}`)).toEqual(['team_odours:update', 'team_odours:update']);
+    });
+
+    it('needs at least one odour', async () => {
+      const dialog = await open();
+      await userEvent.click(dialog.getByRole('button', { name: 'Choose odours' }));
+      for (const c of ['Narcotics', 'Explosives', 'Cadaver', 'Bed bugs']) {
+        await userEvent.click(dialog.getByRole('button', { name: `Select all ${c}` }));
+      }
+      expect(dialog.getByRole('button', { name: 'Save odours' })).toBeDisabled();
+      expect(dialog.getByText('Pick at least one odour')).toBeInTheDocument();
+      await userEvent.click(dialog.getByRole('checkbox', { name: 'MDMA' }));
+      expect(dialog.getByRole('button', { name: 'Save odours' })).toBeEnabled();
+    });
+
+    it('goes back from the odours without saving', async () => {
+      const dialog = await open();
+      await userEvent.click(dialog.getByRole('button', { name: 'Choose odours' }));
+      await userEvent.click(dialog.getByRole('checkbox', { name: 'Cocaine' }));
+      await userEvent.click(dialog.getByRole('button', { name: 'Back to settings' }));
+      expect(dialog.getByText('20 odours selected')).toBeInTheDocument();
+      expect(await db.outbox.count()).toBe(0);
+    });
+
+    it('asks before archiving, and Cancel keeps the team', async () => {
+      const dialog = await open();
+      await userEvent.click(dialog.getByRole('button', { name: 'Archive team' }));
+      expect(dialog.getByText(
+        'Archive Alpha? It and its dogs disappear for everyone; you can restore it from Archived.',
+      )).toBeInTheDocument();
+      expect((await db.teams.get('t1'))!.archived_at).toBeNull(); // one tap did not archive
+      await userEvent.click(dialog.getByRole('button', { name: 'Cancel' }));
+      expect(dialog.getByLabelText('Team name')).toBeInTheDocument(); // back on the settings view
+      expect((await db.teams.get('t1'))!.archived_at).toBeNull();
+    });
+
+    it('archives on confirm and returns to the teams', async () => {
+      const dialog = await open();
+      await userEvent.click(dialog.getByRole('button', { name: 'Archive team' }));
+      await userEvent.click(dialog.getByRole('button', { name: 'Archive Alpha' }));
+      await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(/^\/$/));
+      expect((await db.teams.get('t1'))!.archived_at).not.toBeNull();
+      expect((await db.outbox.toArray()).map((i) => `${i.table}:${i.op}`)).toEqual(['teams:update']);
+    });
+
+    it('will not archive while a timer runs on one of its dogs', async () => {
+      await seed(trainer);
+      await db.sessions.put(running('r', 'd1'));
+      renderTeam();
+      await userEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+      const dialog = await sheet();
+      await userEvent.click(dialog.getByRole('button', { name: 'Archive team' }));
+      expect(dialog.getByRole('alert')).toHaveTextContent('Stop the running timer before archiving');
+      expect(dialog.queryByRole('button', { name: 'Archive Alpha' })).toBeNull();
+      expect((await db.teams.get('t1'))!.archived_at).toBeNull();
+    });
+
+    it('a timer on another team does not stop this team being archived', async () => {
+      await seed(trainer);
+      await db.sessions.put(running('r', 'd4')); // Fly, in Bravo
+      renderTeam();
+      await userEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+      const dialog = await sheet();
+      await userEvent.click(dialog.getByRole('button', { name: 'Archive team' }));
+      expect(dialog.getByRole('button', { name: 'Archive Alpha' })).toBeInTheDocument();
+    });
   });
 
   it('gives a handler the dogs and nothing to change', async () => {
