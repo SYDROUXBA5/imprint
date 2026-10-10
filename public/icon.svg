@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#B8901C"/>
+  <!-- paw print, ink -->
+  <g fill="#1E1A14" transform="translate(-14 22)">
+    <ellipse cx="136" cy="258" rx="34" ry="48" transform="rotate(-24 136 258)"/>
+    <ellipse cx="206" cy="176" rx="36" ry="52" transform="rotate(-8 206 176)"/>
+    <ellipse cx="296" cy="176" rx="36" ry="52" transform="rotate(8 296 176)"/>
+    <ellipse cx="366" cy="258" rx="34" ry="48" transform="rotate(24 366 258)"/>
+    <path d="M251 262c-52 0-102 58-102 108 0 38 34 56 68 46 20-6 26-10 34-10s14 4 34 10c34 10 68-8 68-46 0-50-50-108-102-108z"/>
+  </g>
+  <!-- red stamp ring -->
+  <g fill="none" stroke="#C0322B" transform="rotate(-14 398 118)">
+    <circle cx="398" cy="118" r="58" stroke-width="14"/>
+    <circle cx="398" cy="118" r="40" stroke-width="5"/>
+  </g>
+</svg>
