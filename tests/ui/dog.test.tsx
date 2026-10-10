@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, ME_KEY } from '../../src/data/db';
 import type { Dog, Member, Session } from '../../src/domain/types';
 import { FAKE_CLOCK } from '../fakeClock';
-import { ODOURS, dogRow, pick, seedCatalogue } from '../fixtures';
+import { ODOURS, dogRow, pick, seedCatalogue, team } from '../fixtures';
 import { DogScreen } from '../../src/ui/screens/DogScreen';
 
 const trainer: Member = { id: 'mT', unit_id: 'u1', user_id: 'uT', name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
@@ -39,6 +39,7 @@ const renderDog = (entry = '/dog/d1') => render(
   <MemoryRouter initialEntries={['/', entry]} initialIndex={1}>
     <Routes>
       <Route path="/" element={<Where />} />
+      <Route path="/team/:teamId" element={<Where />} />
       <Route path="/dog/:dogId" element={<><DogScreen /><Where /></>} />
       <Route path="/dog/:dogId/timer/:odourId" element={<><FakeTimer /><Where /></>} />
       <Route path="/dog/:dogId/log" element={<Where />} />
@@ -140,6 +141,21 @@ describe('DogScreen', () => {
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/dog\/d1$/); // chosen, not written to the URL
   });
 
+  it('offers a way back to a running timer whose odour the team has since unticked, marked as not in the list', async () => {
+    await seed(trainer, [running('r', 'tnt', new Date().toISOString())]);
+    await db.team_odours.put(pick('t1', 'tnt', false));
+    renderDog();
+    await userEvent.click(await screen.findByRole('link', { name: 'Running: TNT (not in current list)' }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/dog/d1/timer/tnt');
+  });
+
+  it('has no such link while the running odour is in the team\'s list', async () => {
+    await seed(trainer, [running('r', 'tnt', new Date().toISOString())]);
+    renderDog();
+    await screen.findByRole('button', { name: 'Explosives' });
+    expect(screen.queryByRole('link', { name: /not in current list/ })).toBeNull();
+  });
+
   it('lets the URL win over the running odour, and ignores a junk category', async () => {
     await seed(trainer, [running('r', 'tnt', new Date().toISOString())]);
     const { unmount } = renderDog('/dog/d1?cat=narcotics');
@@ -168,18 +184,28 @@ describe('DogScreen', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/dog/d1/timer/mdma');
   });
 
-  it('has a Log link in the header', async () => {
-    await seed(handler);
+  it('has a Log link in the header for a trainer', async () => {
+    await seed(trainer);
     renderDog();
     await userEvent.click(await screen.findByRole('link', { name: 'Log' }));
     expect(screen.getByTestId('where')).toHaveTextContent('/dog/d1/log');
   });
 
-  it('goes back to the dogs list', async () => {
+  it('goes back to the dog\'s team', async () => {
     await seed();
     renderDog();
     await userEvent.click(await screen.findByRole('button', { name: 'Back' }));
-    expect(screen.getByTestId('where')).toHaveTextContent(/^\/$/);
+    expect(screen.getByTestId('where')).toHaveTextContent(/^\/team\/t1$/);
+  });
+
+  it('shows the dog\'s breed drawing, breed and purpose under its name', async () => {
+    await seed();
+    await db.dogs.update('d1', { breed: 'malinois', purpose: 'dual' });
+    renderDog();
+    expect(await screen.findByText('Malinois · Dual purpose')).toBeInTheDocument();
+    const portrait = screen.getByRole('img', { name: 'Malinois' }).closest('[data-breed-portrait]')!;
+    expect(portrait).toHaveAttribute('data-size', 'md');
+    expect(portrait).toHaveAttribute('data-play', 'true'); // plays once on open
   });
 
   it('sends you home when the dog is not here (or is archived)', async () => {
@@ -189,32 +215,110 @@ describe('DogScreen', () => {
     await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(/^\/$/));
   });
 
+  it('sends you home when the dog\'s team is archived', async () => {
+    await seed();
+    await db.teams.update('t1', { archived_at: '2026-10-04T00:00:00Z' });
+    renderDog();
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(/^\/$/));
+  });
+
   describe('trainer-only controls', () => {
-    it('shows Rename and Archive to a trainer, not to a handler', async () => {
+    it('shows Edit, Archive, the report and the Log link to a trainer, none of them to a handler', async () => {
       await seed(trainer);
       const { unmount } = renderDog();
-      expect(await screen.findByRole('button', { name: 'Rename' })).toBeInTheDocument();
+      expect(await screen.findByRole('button', { name: 'Edit' })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Archive' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Progress report (PDF)' })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Log' })).toBeInTheDocument();
       unmount();
       await db.meta.put({ key: ME_KEY, value: handler });
       renderDog();
       await screen.findByText('Cocaine');
+      expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull();
       expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
+      expect(screen.queryByRole('button', { name: /report/i })).toBeNull();
+      expect(screen.queryByRole('link', { name: 'Log' })).toBeNull();
     });
 
-    it('renames the dog', async () => {
-      await seed();
-      renderDog();
-      await userEvent.click(await screen.findByRole('button', { name: 'Rename' }));
-      const field = screen.getByLabelText('Dog name');
-      expect(field).toHaveValue('Rex');
-      await userEvent.clear(field);
-      expect(screen.getByRole('button', { name: 'Save name' })).toBeDisabled();
-      await userEvent.type(field, 'Rexy');
-      await userEvent.click(screen.getByRole('button', { name: 'Save name' }));
-      expect(await screen.findByRole('heading', { name: 'Rexy' })).toBeInTheDocument();
-      expect(screen.queryByRole('dialog')).toBeNull();
+    describe('Edit dog', () => {
+      const open = async () => {
+        await seed();
+        await db.teams.put(team('t2', 'Bravo'));
+        await db.teams.put(team('t3', 'Retired', '2026-10-05T00:00:00Z'));
+        renderDog();
+        await userEvent.click(await screen.findByRole('button', { name: 'Edit' }));
+        return within(await screen.findByRole('dialog'));
+      };
+
+      it('opens with the dog\'s name, breed, purpose and team filled in', async () => {
+        const dialog = await open();
+        expect(dialog.getByLabelText('Dog name')).toHaveValue('Rex');
+        expect(dialog.getByRole('button', { name: 'Labrador' })).toHaveAttribute('aria-pressed', 'true');
+        expect(dialog.getByRole('button', { name: 'Hound' })).toHaveAttribute('aria-pressed', 'false');
+        expect(dialog.getByRole('button', { name: 'Single purpose' })).toHaveAttribute('aria-pressed', 'true');
+        expect(dialog.getByRole('button', { name: 'Dual purpose' })).toHaveAttribute('aria-pressed', 'false');
+        expect(dialog.getByLabelText('Team')).toHaveValue('t1');
+        // the drawing is there, but it only plays when you choose a breed
+        const portrait = dialog.getByRole('img', { name: 'Labrador' }).closest('[data-breed-portrait]')!;
+        expect(portrait).toHaveAttribute('data-size', 'lg');
+        expect(portrait).toHaveAttribute('data-play', 'false');
+      });
+
+      it('offers only active teams to move the dog to', async () => {
+        const dialog = await open();
+        const options = within(dialog.getByLabelText('Team')).getAllByRole('option').map((o) => o.textContent);
+        expect(options).toEqual(['Alpha', 'Bravo']);
+      });
+
+      it('renames the dog', async () => {
+        const dialog = await open();
+        const field = dialog.getByLabelText('Dog name');
+        await userEvent.clear(field);
+        expect(dialog.getByRole('button', { name: 'Save dog' })).toBeDisabled();
+        await userEvent.type(field, 'Rexy');
+        await userEvent.click(dialog.getByRole('button', { name: 'Save dog' }));
+        expect(await screen.findByRole('heading', { name: 'Rexy' })).toBeInTheDocument();
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect((await db.outbox.toArray()).map((i) => i.row)).toEqual([{ id: 'd1', name: 'Rexy' }]); // only what changed
+      });
+
+      it('changes the breed and the purpose, and the header follows', async () => {
+        const dialog = await open();
+        await userEvent.click(dialog.getByRole('button', { name: 'Bloodhound' }));
+        expect(dialog.getByRole('img', { name: 'Bloodhound' }).closest('[data-breed-portrait]')).toHaveAttribute('data-play', 'true');
+        await userEvent.click(dialog.getByRole('button', { name: 'Dual purpose' }));
+        await userEvent.click(dialog.getByRole('button', { name: 'Save dog' }));
+        expect(await screen.findByText('Bloodhound · Dual purpose')).toBeInTheDocument();
+        expect(await db.dogs.get('d1')).toMatchObject({ breed: 'bloodhound', purpose: 'dual', name: 'Rex', team_id: 't1' });
+      });
+
+      it('moves the dog to another team, and Back then goes to that team', async () => {
+        const dialog = await open();
+        await userEvent.selectOptions(dialog.getByLabelText('Team'), 't2');
+        await userEvent.click(dialog.getByRole('button', { name: 'Save dog' }));
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        expect((await db.dogs.get('d1'))!.team_id).toBe('t2');
+        expect((await db.outbox.toArray()).map((i) => i.row)).toEqual([{ id: 'd1', team_id: 't2' }]);
+        // the dog screen now shows Bravo's odours (Bravo ticked none yet), and goes back to Bravo
+        await userEvent.click(await screen.findByRole('button', { name: 'Back' }));
+        expect(screen.getByTestId('where')).toHaveTextContent(/^\/team\/t2$/);
+      });
+
+      it('writes nothing when nothing changed', async () => {
+        const dialog = await open();
+        await userEvent.click(dialog.getByRole('button', { name: 'Save dog' }));
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        expect(await db.outbox.count()).toBe(0);
+      });
+
+      it('Close leaves the dog as it was', async () => {
+        const dialog = await open();
+        await userEvent.type(dialog.getByLabelText('Dog name'), 'zzz');
+        await userEvent.click(dialog.getByRole('button', { name: 'Close' }));
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect((await db.dogs.get('d1'))!.name).toBe('Rex');
+      });
     });
 
     it('asks before archiving, and Cancel keeps the dog', async () => {
@@ -231,12 +335,12 @@ describe('DogScreen', () => {
       expect((await db.dogs.get('d1'))!.archived_at).toBeNull();
     });
 
-    it('archives on confirm and returns to the dogs list', async () => {
+    it('archives on confirm and returns to the team\'s dogs', async () => {
       await seed();
       renderDog();
       await userEvent.click(await screen.findByRole('button', { name: 'Archive' }));
       await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Archive Rex' }));
-      await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(/^\/$/));
+      await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(/^\/team\/t1$/));
       expect((await db.dogs.get('d1'))!.archived_at).not.toBeNull();
       expect((await db.outbox.toArray()).map((i) => `${i.table}:${i.op}`)).toEqual(['dogs:update']);
     });

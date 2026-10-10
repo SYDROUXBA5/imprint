@@ -16,7 +16,7 @@ const { db, ME_KEY } = await import('../../src/data/db');
 const { shareOrDownload } = await import('../../src/export/share');
 const { dogReportPdf } = await import('../../src/export/pdf');
 const { localDate } = await import('../../src/domain/format');
-const { TeamScreen } = await import('../../src/ui/screens/TeamScreen');
+const { MembersScreen } = await import('../../src/ui/screens/MembersScreen');
 const { DogScreen } = await import('../../src/ui/screens/DogScreen');
 
 const tess: Member = { id: 'mT', unit_id: 'u1', user_id: 'uT', name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
@@ -58,7 +58,7 @@ const firstBytes = (b: Blob, n: number) => new Promise<number[]>((resolve, rejec
 });
 const today = () => localDate(new Date());
 
-const renderTeam = () => render(<MemoryRouter initialEntries={['/team']}><Routes><Route path="/team" element={<TeamScreen />} /></Routes></MemoryRouter>);
+const renderMembers = () => render(<MemoryRouter initialEntries={['/members']}><Routes><Route path="/members" element={<MembersScreen />} /></Routes></MemoryRouter>);
 const renderDog = () => render(
   <MemoryRouter initialEntries={['/dog/d1']}><Routes><Route path="/dog/:dogId" element={<DogScreen />} /></Routes></MemoryRouter>,
 );
@@ -71,10 +71,10 @@ beforeEach(async () => {
   await db.open();
 });
 
-describe('Team screen: CSV export', () => {
+describe('Members screen: CSV export', () => {
   it('exports every session, archived dogs included, through the share sheet', async () => {
     await seed(tess);
-    renderTeam();
+    renderMembers();
     await userEvent.click(await screen.findByRole('button', { name: 'Export all sessions (CSV)' }));
     await waitFor(() => expect(shareOrDownload).toHaveBeenCalledTimes(1));
     const [blob, filename] = vi.mocked(shareOrDownload).mock.calls[0];
@@ -89,7 +89,7 @@ describe('Team screen: CSV export', () => {
 
   it('says where a plain download went, and says nothing when the share sheet was closed', async () => {
     await seed(tess);
-    renderTeam();
+    renderMembers();
     vi.mocked(shareOrDownload).mockResolvedValueOnce('downloaded');
     await userEvent.click(await screen.findByRole('button', { name: 'Export all sessions (CSV)' }));
     expect(await screen.findByText('Saved to your downloads.')).toBeInTheDocument();
@@ -102,7 +102,7 @@ describe('Team screen: CSV export', () => {
   it('shows an error when the file cannot be made', async () => {
     await seed(tess);
     vi.mocked(shareOrDownload).mockRejectedValueOnce(new Error('disk full'));
-    renderTeam();
+    renderMembers();
     await userEvent.click(await screen.findByRole('button', { name: 'Export all sessions (CSV)' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not make the file. Try again.');
   });
@@ -111,7 +111,7 @@ describe('Team screen: CSV export', () => {
     await seed(tess);
     let finish!: (v: 'shared') => void;
     vi.mocked(shareOrDownload).mockReturnValueOnce(new Promise((r) => { finish = r; }));
-    renderTeam();
+    renderMembers();
     await userEvent.click(await screen.findByRole('button', { name: 'Export all sessions (CSV)' }));
     expect(await screen.findByRole('button', { name: 'Preparing…' })).toBeDisabled();
     finish('shared');
@@ -120,7 +120,7 @@ describe('Team screen: CSV export', () => {
 
   it('warns about unsynced items, and only when there are some', async () => {
     await seed(tess);
-    renderTeam();
+    renderMembers();
     await screen.findByRole('button', { name: 'Export all sessions (CSV)' });
     expect(screen.queryByText(/not synced yet/)).toBeNull();
     await queueUnsynced(3);
@@ -130,7 +130,7 @@ describe('Team screen: CSV export', () => {
   it('uses the singular for one unsynced item', async () => {
     await seed(tess);
     await queueUnsynced(1);
-    renderTeam();
+    renderMembers();
     expect(await screen.findByText(/1 item not synced yet\. It is in this export/)).toBeInTheDocument();
   });
 });

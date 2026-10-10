@@ -63,11 +63,11 @@ describe('components', () => {
 
   it('HeaderBar shows the title and a working back button', async () => {
     const onBack = vi.fn();
-    render(<HeaderBar title="Rex" onBack={onBack} right={<a href="#x">Team</a>} />);
+    render(<HeaderBar title="Rex" onBack={onBack} right={<a href="#x">Members</a>} />);
     expect(screen.getByRole('heading', { name: 'Rex' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Back' }));
     expect(onBack).toHaveBeenCalled();
-    expect(screen.getByRole('link', { name: 'Team' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Members' })).toBeInTheDocument();
   });
 
   it('HeaderBar has no back button without onBack', () => {

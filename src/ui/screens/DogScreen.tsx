@@ -1,32 +1,36 @@
-import { useMemo, useState, type FormEvent } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { db } from '../../data/db';
-import { archiveDog, renameDog } from '../../data/repo';
+import { archiveDog } from '../../data/repo';
+import { breedLabel, purposeLabel } from '../../domain/breeds';
 import { exportDogReport } from '../../export/run';
 import { formatMinutesOfTarget } from '../../domain/format';
-import { odourById, teamOdourGroups } from '../../domain/odours';
+import { NOT_IN_CURRENT_LIST, isInTeamList, odourById, teamOdourGroups } from '../../domain/odours';
 import { IMPRINT_TARGET_S, isImprinted, isRunning, odourTotal } from '../../domain/totals';
 import { useMe } from '../../hooks/useMe';
 import { useNow } from '../../hooks/useNow';
 import { useUnitData } from '../../hooks/useUnitData';
+import { BreedPortrait } from '../components/BreedPortrait';
 import { ExportButton } from '../components/ExportButton';
 import { HeaderBar } from '../components/HeaderBar';
 import { ImprintedStamp } from '../components/ImprintedStamp';
 import { PillToggle } from '../components/PillToggle';
 import { ProgressBar } from '../components/ProgressBar';
 import { Sheet } from '../components/Sheet';
+import { DogSheet } from './DogSheet';
 
 export function DogScreen() {
   const { dogId } = useParams();
   const me = useMe();
-  const { dogs, sessions, corrections, odours, catalogue, loading } = useUnitData();
+  const { dogs, teams, sessions, corrections, odours, catalogue, loading } = useUnitData();
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
-  const [renaming, setRenaming] = useState(false);
-  const [newName, setNewName] = useState('');
+  const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [blocked, setBlocked] = useState(false);
   const [error, setError] = useState('');
+  // Where to go once the dog is gone from the list: its team, if we are the ones archiving it.
+  const [leavingTo, setLeavingTo] = useState<string | null>(null);
 
   const dog = dogs.find((d) => d.id === dogId);
   const runningHere = useMemo(
@@ -37,29 +41,19 @@ export function DogScreen() {
   const now = useNow(runningHere ? 1000 : null);
 
   if (loading || !me) return null;
-  if (!dog) return <Navigate to="/" replace />;
+  if (!dog) return <Navigate to={leavingTo ?? '/'} replace />;
 
   // The odours of the dog's team, in category tabs. The tab lives in the URL (?cat=<category id>); without a
   // usable one it is the running odour's category, else the first.
   const groups = teamOdourGroups(dog.team_id, catalogue);
   const urlCat = params.get('cat');
-  const runningCat = runningHere && odourById(odours, runningHere.odour_id)?.category_id;
+  const runningOdour = runningHere && odourById(odours, runningHere.odour_id);
+  const runningCat = runningOdour && runningOdour.category_id;
   const shown = groups.find((g) => g.category.id === urlCat)
     ?? groups.find((g) => g.category.id === runningCat)
     ?? groups[0];
   const isTrainer = me.role === 'trainer';
   const trainerCtx = { db, me };
-
-  async function rename(e: FormEvent) {
-    e.preventDefault();
-    try {
-      await renameDog(trainerCtx, dog!.id, newName);
-      setRenaming(false);
-      setError('');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not rename the dog.');
-    }
-  }
 
   function askToArchive() {
     setError('');
@@ -68,29 +62,43 @@ export function DogScreen() {
   }
 
   async function archive() {
+    setLeavingTo(`/team/${dog!.team_id}`); // the list updates as soon as the change is saved, before this resolves
     try {
       await archiveDog(trainerCtx, dog!.id);
-      navigate('/', { replace: true });
     } catch (err) {
+      setLeavingTo(null);
       setError(err instanceof Error ? err.message : 'Could not archive the dog.');
     }
   }
 
   return (
     <div className="screen">
-      <HeaderBar title={dog.name} onBack={() => navigate('/')}
-        right={
+      <HeaderBar title={dog.name} onBack={() => navigate(`/team/${dog.team_id}`)}
+        right={isTrainer ? (
           <Link to={`/dog/${dog.id}/log`}
             style={{ display: 'inline-flex', alignItems: 'center', minHeight: 'var(--tap)', padding: '0 12px', textDecoration: 'none' }}>
             Log
           </Link>
-        } />
+        ) : undefined} />
       <main className="pad">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12 }}>
+          <BreedPortrait breed={dog.breed} size="md" play />
+          <p style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>{`${breedLabel(dog.breed)} · ${purposeLabel(dog.purpose)}`}</p>
+        </div>
         {groups.length > 0 && shown && (
           <PillToggle value={shown.category.id} options={groups.map((g) => ({ value: g.category.id, label: g.category.name }))}
             onChange={(cat) => setParams({ cat }, { replace: true })} />
         )}
         {groups.length === 0 && <p style={{ textAlign: 'center', fontWeight: 800 }}>No odours selected for this team</p>}
+
+        {runningOdour && !isInTeamList(dog.team_id, runningOdour.id, catalogue) && (
+          <Link to={`/dog/${dog.id}/timer/${runningOdour.id}`} style={{
+            display: 'block', marginTop: 16, padding: '10px 12px', textDecoration: 'none', fontWeight: 800,
+            border: '1.5px solid var(--ink)', borderRadius: 'var(--radius)', background: 'var(--mustard)',
+          }}>
+            {`Running: ${runningOdour.name} ${NOT_IN_CURRENT_LIST}`}
+          </Link>
+        )}
 
         <ul style={{ listStyle: 'none', margin: '16px 0 0', padding: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
           {(shown?.odours ?? []).map((odour) => {
@@ -131,10 +139,7 @@ export function DogScreen() {
 
         {isTrainer && (
           <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
-            <button type="button" className="btn" style={{ flex: 1 }}
-              onClick={() => { setNewName(dog.name); setError(''); setRenaming(true); }}>
-              Rename
-            </button>
+            <button type="button" className="btn" style={{ flex: 1 }} onClick={() => setEditing(true)}>Edit</button>
             <button type="button" className="btn" style={{ flex: 1 }} onClick={askToArchive}>Archive</button>
           </div>
         )}
@@ -148,18 +153,7 @@ export function DogScreen() {
         )}
       </main>
 
-      <Sheet open={renaming} onClose={() => setRenaming(false)} title="Rename dog">
-        <form onSubmit={rename}>
-          <label className="label" htmlFor="rename-dog">Dog name</label>
-          <input id="rename-dog" className="field" value={newName} autoComplete="off"
-            onChange={(e) => setNewName(e.target.value)} />
-          {error && renaming && <p role="alert" className="error">{error}</p>}
-          <button type="submit" className="btn btn-primary" disabled={!newName.trim()}
-            style={{ width: '100%', marginTop: 16 }}>
-            Save name
-          </button>
-        </form>
-      </Sheet>
+      {isTrainer && <DogSheet open={editing} onClose={() => setEditing(false)} teams={teams} dog={dog} />}
 
       <Sheet open={confirming} onClose={() => setConfirming(false)} title="Archive dog">
         <p style={{ fontSize: 18 }}>

@@ -19,12 +19,12 @@ export function PillToggle({ value, options, onChange, label = 'Odour category' 
       border: '1.5px solid var(--ink)', borderRadius: 999, background: 'var(--paper)',
       overflowX: scrolls ? 'auto' : 'hidden',
     }}>
-      {options.map((o) => {
+      {options.map((o, i) => {
         const selected = o.value === value;
         return (
           <button key={o.value} type="button" aria-pressed={selected} onClick={() => onChange(o.value)}
             style={{
-              border: 0, borderRadius: 0, fontSize: 18, fontWeight: 800, padding: scrolls ? '0 16px' : undefined,
+              border: 0, borderLeft: i > 0 ? '1.5px solid var(--ink)' : 0, borderRadius: 0, fontSize: 18, fontWeight: 800, padding: scrolls ? '0 16px' : undefined,
               background: selected ? 'var(--ink)' : 'transparent',
               color: selected ? 'var(--paper)' : 'var(--ink)',
             }}>

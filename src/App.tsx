@@ -1,5 +1,5 @@
 import { useEffect, type ReactElement } from 'react';
-import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { HashRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { db } from './data/db';
 import { supabaseRemote } from './data/remote';
 import { startSyncLoop } from './data/sync';
@@ -7,11 +7,12 @@ import { demoRole } from './dev/demoMode';
 import { supabase } from './data/supabase';
 import type { Member } from './domain/types';
 import { useMe } from './hooks/useMe';
-import { ArchivedDogsScreen } from './ui/screens/ArchivedDogsScreen';
+import { ArchivedScreen } from './ui/screens/ArchivedScreen';
 import { DogScreen } from './ui/screens/DogScreen';
-import { DogsScreen } from './ui/screens/DogsScreen';
 import { LogScreen } from './ui/screens/LogScreen';
-import { TeamScreen } from './ui/screens/TeamScreen';
+import { MembersScreen } from './ui/screens/MembersScreen';
+import { TeamDogsScreen } from './ui/screens/TeamDogsScreen';
+import { TeamsScreen } from './ui/screens/TeamsScreen';
 import { TimerScreen } from './ui/screens/TimerScreen';
 import { WelcomeScreen } from './ui/screens/WelcomeScreen';
 
@@ -39,18 +40,25 @@ export default function App() {
   );
 }
 
-/** Trainer-only screens: a handler who types the address is sent back to the dogs list. */
+/** Trainer-only screens: a handler who types the address is sent back to the teams. */
 const trainerOnly = (me: Member, screen: ReactElement) => (me.role === 'trainer' ? screen : <Navigate to="/" replace />);
+
+/** The log is for trainers (spec §13.5): a handler who types the address lands on the dog screen. */
+function LogRoute({ me }: { me: Member }) {
+  const { dogId = '' } = useParams();
+  return me.role === 'trainer' ? <LogScreen /> : <Navigate to={`/dog/${dogId}`} replace />;
+}
 
 export function AppRoutes({ me }: { me: Member }) {
   return (
     <Routes>
-      <Route path="/" element={<DogsScreen />} />
+      <Route path="/" element={<TeamsScreen />} />
+      <Route path="/team/:teamId" element={<TeamDogsScreen />} />
       <Route path="/dog/:dogId" element={<DogScreen />} />
       <Route path="/dog/:dogId/timer/:odourId" element={<TimerScreen />} />
-      <Route path="/dog/:dogId/log" element={<LogScreen />} />
-      <Route path="/archived" element={trainerOnly(me, <ArchivedDogsScreen />)} />
-      <Route path="/team" element={trainerOnly(me, <TeamScreen />)} />
+      <Route path="/dog/:dogId/log" element={<LogRoute me={me} />} />
+      <Route path="/members" element={trainerOnly(me, <MembersScreen />)} />
+      <Route path="/archived" element={trainerOnly(me, <ArchivedScreen />)} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

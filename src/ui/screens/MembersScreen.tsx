@@ -23,8 +23,8 @@ function sentence(e: unknown): string {
 
 const byName = (a: Member, b: Member) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
 
-/** Trainer-only (the route sends handlers home). Every change goes to the server, so it needs signal. */
-export function TeamScreen() {
+/** The unit's people (formerly "Team"). Trainer-only (the route sends handlers home). Every change goes to the server, so it needs signal. */
+export function MembersScreen() {
   const me = useMe();
   const { members, unit, loading } = useUnitData();
   const online = useOnline();
@@ -77,7 +77,7 @@ export function TeamScreen() {
 
   return (
     <div className="screen">
-      <HeaderBar title="Team" onBack={() => navigate('/')} />
+      <HeaderBar title="Members" onBack={() => navigate('/')} />
       <main className="pad">
         <section aria-label="Invite code" style={{
           padding: 14, textAlign: 'center', border: '1.5px solid var(--ink)', borderRadius: 'var(--radius)', background: 'var(--paper)',
@@ -97,12 +97,12 @@ export function TeamScreen() {
         </section>
 
         {!online && (
-          <p role="status" style={{ margin: '12px 0 0', fontWeight: 800 }}>Team changes need signal.</p>
+          <p role="status" style={{ margin: '12px 0 0', fontWeight: 800 }}>Member changes need signal.</p>
         )}
         {error && !confirm && <p role="alert" className="error">{error}</p>}
 
         <section aria-label="Members" style={{ marginTop: 20 }}>
-          <h2 style={{ fontSize: 22 }}>Members</h2>
+          <h2 style={{ fontSize: 22 }}>Active</h2>
           <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, display: 'grid', gap: 12 }}>
             {active.map((m) => (
               <li key={m.id} style={{
@@ -165,7 +165,7 @@ export function TeamScreen() {
               ? 'The old code will stop working.'
               : `Remove ${confirm.member.name}? Their past sessions stay in the log.`}
           </p>
-          {!online && <p className="error">Team changes need signal.</p>}
+          {!online && <p className="error">Member changes need signal.</p>}
           {error && <p role="alert" className="error">{error}</p>}
           <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
             <button type="button" className="btn" style={{ flex: 1 }} onClick={closeConfirm}>Cancel</button>
