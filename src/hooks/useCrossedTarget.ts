@@ -6,7 +6,7 @@ import { crossedTarget } from '../domain/celebration';
  * is only a baseline, so opening an odour that is already imprinted (or whose data is still
  * loading as 0) never fires it.
  */
-export function useCrossedTarget(total: number, ready: boolean): [boolean, () => void] {
+export function useCrossedTarget(total: number, ready: boolean): [boolean, () => void, () => void] {
   const prev = useRef<number | null>(null);
   const [crossed, setCrossed] = useState(false);
   useEffect(() => {
@@ -15,5 +15,7 @@ export function useCrossedTarget(total: number, ready: boolean): [boolean, () =>
     prev.current = total;
   }, [total, ready]);
   const dismiss = useCallback(() => setCrossed(false), []);
-  return [crossed, dismiss];
+  /** For a crossing the caller knows about before the live total catches up (a saved manual entry). */
+  const fire = useCallback(() => setCrossed(true), []);
+  return [crossed, dismiss, fire];
 }

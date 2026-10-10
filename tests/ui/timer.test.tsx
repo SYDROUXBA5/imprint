@@ -186,6 +186,24 @@ describe('TimerScreen', () => {
       expect(celebrating()).toBe('true');
     });
 
+    it('plays the overlay over a timer that keeps running, and a tap closes it for good', async () => {
+      await seed([manual('s1', 'mdma', 74), running('r', 'mdma', hana)]);
+      renderTimer();
+      await screen.findByRole('button', { name: 'Stop' });
+      expect(screen.queryByText('Rex: MDMA imprinted')).toBeNull();
+      await advance(61_000);
+      expect(await screen.findByText('Rex: MDMA imprinted')).toBeInTheDocument();
+      expect(screen.getByRole('img', { name: 'Imprinted' })).toBeInTheDocument();
+      await advance(2000);
+      expect(clock()).toHaveTextContent('1:03'); // still counting underneath
+      await user().click(screen.getByText('Rex: MDMA imprinted'));
+      expect(screen.queryByText('Rex: MDMA imprinted')).toBeNull();
+      expect(celebrating()).toBe('false');
+      await advance(5000);
+      expect(screen.queryByText('Rex: MDMA imprinted')).toBeNull(); // plays once
+      expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
+    });
+
     it('does not fire when an already-imprinted odour is opened', async () => {
       await seed([manual('s1', 'mdma', 80)]);
       renderTimer();

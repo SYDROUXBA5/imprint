@@ -10,6 +10,7 @@ import { useCrossedTarget } from '../../hooks/useCrossedTarget';
 import { useMe } from '../../hooks/useMe';
 import { useNow } from '../../hooks/useNow';
 import { useUnitData } from '../../hooks/useUnitData';
+import { Celebration } from '../Celebration';
 import { CompassRing } from '../components/CompassRing';
 import { ManualEntrySheet } from './ManualEntrySheet';
 
@@ -35,7 +36,7 @@ export function TimerScreen() {
   const now = useNow(runningHere ? 1000 : null);
 
   const total = odourTotal(sessions, corrections, dogId, odourId, now);
-  const [celebrate] = useCrossedTarget(total, !loading);
+  const [celebrate, dismissCelebration] = useCrossedTarget(total, !loading);
 
   if (loading || !me) return null;
   if (!dog) return <Navigate to="/" replace />;
@@ -148,6 +149,7 @@ export function TimerScreen() {
         </button>
       </main>
       <ManualEntrySheet open={manualOpen} onClose={() => setManualOpen(false)} />
+      {celebrate && <Celebration dog={dog.name} odour={odour.name} onDone={dismissCelebration} />}
     </div>
   );
 }
