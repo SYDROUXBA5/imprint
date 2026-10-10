@@ -8,6 +8,8 @@ const X = '00000000-0000-0000-0000-0000000000c1'; // trainer, unit 2
 const DOG = '10000000-0000-0000-0000-000000000001'; // unit 1, to be deleted
 const OTHER_DOG = '10000000-0000-0000-0000-000000000002'; // unit 1, must survive
 const X_DOG = '10000000-0000-0000-0000-000000000003'; // unit 2, must survive
+const TEAM = '30000000-0000-0000-0000-000000000001'; // unit 1
+const X_TEAM = '30000000-0000-0000-0000-000000000002'; // unit 2
 
 async function setup() {
   const db = await freshDb();
@@ -19,24 +21,29 @@ async function setup() {
   const member = async (user: string) =>
     (await db.query<{ id: string; unit_id: string }>('select id, unit_id from members where user_id = $1', [user])).rows[0];
   const t = await member(T), h = await member(H), x = await member(X);
-  for (const [id, name] of [[DOG, 'Rex'], [OTHER_DOG, 'Fly']]) {
-    await as(db, T, () => db.query(
-      `insert into dogs (id, unit_id, name, created_by) values ($1, $2, $3, $4)`, [id, t.unit_id, name, t.id]));
-  }
+  await as(db, T, () => db.query(
+    `insert into teams (id, unit_id, name, created_by) values ($1, $2, 'Alpha', $3)`, [TEAM, t.unit_id, t.id]));
   await as(db, X, () => db.query(
-    `insert into dogs (id, unit_id, name, created_by) values ($1, $2, 'Ace', $3)`, [X_DOG, x.unit_id, x.id]));
-  return { db, t, h, x, unit: t.unit_id, xUnit: x.unit_id };
+    `insert into teams (id, unit_id, name, created_by) values ($1, $2, 'Xray', $3)`, [X_TEAM, x.unit_id, x.id]));
+  const addDog = (user: string, id: string, name: string, m: { id: string; unit_id: string }, team: string) => as(db, user, () => db.query(
+    `insert into dogs (id, unit_id, name, created_by, team_id, breed, purpose) values ($1, $2, $3, $4, $5, 'labrador', 'single')`,
+    [id, m.unit_id, name, m.id, team]));
+  await addDog(T, DOG, 'Rex', t, TEAM);
+  await addDog(T, OTHER_DOG, 'Fly', t, TEAM);
+  await addDog(X, X_DOG, 'Ace', x, X_TEAM);
+  const mdma = (await db.query<{ id: string }>(`select id from odours where unit_id = $1 and name = 'MDMA'`, [t.unit_id])).rows[0].id;
+  return { db, t, h, x, unit: t.unit_id, xUnit: x.unit_id, mdma };
 }
 
 type Ctx = Awaited<ReturnType<typeof setup>>;
 
 /** A stopped timed session by the handler, plus a trainer correction on it. */
 async function addHistory(c: Ctx, dog: string, sessionId: string) {
-  const { db, t, h, unit } = c;
+  const { db, t, h, unit, mdma } = c;
   await as(db, H, () => db.query(
     `insert into sessions (id, unit_id, dog_id, odour_id, handler_id, kind, session_date, started_at, client_sent_at)
-     values ($1, $2, $3, 'mdma', $4, 'timed', '2026-10-03', '2026-10-03T10:00:00Z', now())`,
-    [sessionId, unit, dog, h.id]));
+     values ($1, $2, $3, $4, $5, 'timed', '2026-10-03', '2026-10-03T10:00:00Z', now())`,
+    [sessionId, unit, dog, mdma, h.id]));
   await as(db, H, () => db.query(
     `update sessions set ended_at = '2026-10-03T10:10:00Z', duration_s = 600 where id = $1`, [sessionId]));
   await as(db, T, () => db.query(
@@ -99,14 +106,14 @@ describe('delete dog forever', () => {
 
   it('a dog with a running session is refused, and nothing is deleted', async () => {
     const c = await setup();
-    const { db, h, unit } = c;
+    const { db, h, unit, mdma } = c;
     await addHistory(c, DOG, '20000000-0000-0000-0000-000000000001');
     await archive(db);
     // A session started on the archived dog (e.g. offline, synced late) and never stopped.
     await as(db, H, () => db.query(
       `insert into sessions (id, unit_id, dog_id, odour_id, handler_id, kind, session_date, started_at, client_sent_at)
-       values ('20000000-0000-0000-0000-000000000002', $1, $2, 'tnt', $3, 'timed', '2026-10-04', '2026-10-04T09:00:00Z', now())`,
-      [unit, DOG, h.id]));
+       values ('20000000-0000-0000-0000-000000000002', $1, $2, $4, $3, 'timed', '2026-10-04', '2026-10-04T09:00:00Z', now())`,
+      [unit, DOG, h.id, mdma]));
     await expect(del(db, T)).rejects.toThrow(/running/);
     expect(await count(db, 'dogs where id = $1', [DOG])).toBe(1);
     expect(await count(db, 'sessions where dog_id = $1', [DOG])).toBe(2);

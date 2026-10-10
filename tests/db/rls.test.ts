@@ -19,6 +19,7 @@ const T = '00000000-0000-0000-0000-0000000000a1'; // trainer user
 const H = '00000000-0000-0000-0000-0000000000b1'; // handler user
 const X = '00000000-0000-0000-0000-0000000000c1'; // other unit's trainer
 const DOG = '10000000-0000-0000-0000-000000000001';
+const TEAM = '30000000-0000-0000-0000-000000000001';
 
 async function setup() {
   const db = await freshDb();
@@ -31,15 +32,26 @@ async function setup() {
     (await db.query<{ id: string; unit_id: string }>('select id, unit_id from members where user_id = $1', [user])).rows[0];
   const t = await ids(T), h = await ids(H), x = await ids(X);
   await as(db, T, () => db.query(
-    `insert into dogs (id, unit_id, name, created_by) values ($1, $2, 'Rex', $3)`, [DOG, t.unit_id, t.id]));
+    `insert into teams (id, unit_id, name, created_by) values ($1, $2, 'Alpha', $3)`, [TEAM, t.unit_id, t.id]));
+  await as(db, T, () => db.query(
+    `insert into dogs (id, unit_id, name, created_by, team_id, breed, purpose) values ($1, $2, 'Rex', $3, $4, 'malinois', 'dual')`,
+    [DOG, t.unit_id, t.id, TEAM]));
+  mdmaOf.set(t.unit_id, await odourId(db, t.unit_id, 'MDMA'));
   return { db, t, h, x, unit: t.unit_id };
 }
+
+/** The unit's catalogue odour by name (the default catalogue is seeded by create_unit). */
+const odourId = async (db: PGlite, unit: string, name: string) =>
+  (await db.query<{ id: string }>('select id from odours where unit_id = $1 and name = $2', [unit, name])).rows[0].id;
+
+/** MDMA's catalogue id per unit, resolved in setup() because a removed member can no longer read the catalogue. */
+const mdmaOf = new Map<string, string>();
 
 const insertTimed = (db: PGlite, id: string, unit: string, handler: string, startedAt = '2026-10-03T10:00:00Z') =>
   db.query(
     `insert into sessions (id, unit_id, dog_id, odour_id, handler_id, kind, session_date, started_at, client_sent_at)
-     values ($1, $2, $3, 'mdma', $4, 'timed', '2026-10-03', $5, now())`,
-    [id, unit, DOG, handler, startedAt]);
+     values ($1, $2, $3, $4, $5, 'timed', '2026-10-03', $6, now())`,
+    [id, unit, DOG, mdmaOf.get(unit), handler, startedAt]);
 
 describe('permissions', () => {
   it('invite code is 6 chars from the alphabet', async () => {
@@ -82,8 +94,9 @@ describe('permissions', () => {
     const { db, h, unit } = await setup();
     const S = '20000000-0000-0000-0000-000000000003';
     await as(db, H, () => insertTimed(db, S, unit, h.id));
+    const tnt = await odourId(db, unit, 'TNT');
     await expect(as(db, H, () => db.query(
-      `update sessions set odour_id = 'tnt', ended_at = now(), duration_s = 5 where id = $1`, [S]),
+      `update sessions set odour_id = $2, ended_at = now(), duration_s = 5 where id = $1`, [S, tnt]),
     )).rejects.toThrow(/only ended_at/);
     const del = await as(db, H, () => db.query('delete from sessions where id = $1', [S]));
     expect(del.affectedRows ?? 0).toBe(0);

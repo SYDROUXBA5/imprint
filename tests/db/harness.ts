@@ -23,13 +23,24 @@ const GRANTS = `
   grant select, insert, update, delete on all tables in schema public to authenticated;
 `;
 
-export async function freshDb(withSchema = true): Promise<PGlite> {
+/**
+ * Run the migrations in order (the realtime ones too, against the stub publication above).
+ * `through` / `after` are 4-digit numbers like '0004': stop there, or start after it.
+ */
+export async function applyMigrations(db: PGlite, range: { through?: string; after?: string } = {}): Promise<void> {
+  const files = readdirSync('supabase/migrations').filter((f) => f.endsWith('.sql')).sort();
+  for (const f of files) {
+    const n = f.slice(0, 4);
+    if ((range.after && n <= range.after) || (range.through && n > range.through)) continue;
+    await db.exec(readFileSync(`supabase/migrations/${f}`, 'utf8'));
+  }
+}
+
+export async function freshDb(withSchema = true, through?: string): Promise<PGlite> {
   const db = new PGlite();
   await db.exec(AUTH_STUB);
   if (withSchema) {
-    // Every migration in order. The realtime ones run too, against the stub publication above.
-    const files = readdirSync('supabase/migrations').filter((f) => f.endsWith('.sql')).sort();
-    for (const f of files) await db.exec(readFileSync(`supabase/migrations/${f}`, 'utf8'));
+    await applyMigrations(db, { through });
     await db.exec(GRANTS);
   }
   return db;

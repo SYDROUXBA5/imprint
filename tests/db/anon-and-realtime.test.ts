@@ -32,8 +32,8 @@ describe('anon cannot execute the invite/unit functions', () => {
              has_function_privilege('authenticated', p.oid, 'execute') as authed
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public'
-        and p.proname in ('create_unit', 'join_unit', 'regenerate_invite_code', 'delete_dog_forever')`);
-    expect(rows.map((r) => r.proname).sort()).toEqual(['create_unit', 'delete_dog_forever', 'join_unit', 'regenerate_invite_code']);
+        and p.proname in ('create_unit', 'join_unit', 'regenerate_invite_code', 'delete_dog_forever', 'delete_team_forever')`);
+    expect(rows.map((r) => r.proname).sort()).toEqual(['create_unit', 'delete_dog_forever', 'delete_team_forever', 'join_unit', 'regenerate_invite_code']);
     for (const r of rows) {
       expect(r.anon, `${r.proname} must not be executable by anon`).toBe(false);
       expect(r.authed, `${r.proname} must stay executable by authenticated`).toBe(true);
@@ -42,10 +42,12 @@ describe('anon cannot execute the invite/unit functions', () => {
 });
 
 describe('realtime publication', () => {
-  it('publishes the synced tables and the deleted_dogs tombstones', async () => {
+  it('publishes the synced tables and the tombstones', async () => {
     const db = await freshDb();
     const { rows } = await db.query<{ tablename: string }>(
       `select tablename from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public'`);
-    expect(rows.map((r) => r.tablename).sort()).toEqual(['corrections', 'deleted_dogs', 'dogs', 'members', 'sessions']);
+    expect(rows.map((r) => r.tablename).sort()).toEqual([
+      'corrections', 'deleted_dogs', 'deleted_teams', 'dogs', 'members', 'odour_categories', 'odours', 'sessions', 'team_odours', 'teams',
+    ]);
   });
 });
