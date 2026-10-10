@@ -49,7 +49,8 @@ const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAs
 const clock = () => screen.getByTestId('session-clock');
 
 beforeEach(async () => {
-  vi.useFakeTimers({ shouldAdvanceTime: true });
+  // Leave setImmediate real: fake-indexeddb schedules its work with it, and a faked one kills Dexie transactions halfway.
+  vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
   vi.setSystemTime(new Date(T0));
   await db.delete();
   await db.open();
@@ -202,6 +203,22 @@ describe('TimerScreen', () => {
       await advance(5000);
       expect(screen.queryByText('Rex: MDMA imprinted')).toBeNull(); // plays once
       expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument();
+    });
+
+    it('plays after a manual entry takes the odour over 75:00', async () => {
+      await seed([manual('s1', 'mdma', 74)]);
+      renderTimer();
+      const u = user();
+      await u.click(await screen.findByRole('button', { name: 'Add a session I forgot to time' }));
+      await u.type(await screen.findByLabelText('Minutes'), '2');
+      await u.click(screen.getByRole('button', { name: 'Save session' }));
+      expect(await screen.findByText('Rex: MDMA imprinted')).toBeInTheDocument();
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add a session I forgot to time' })).toBeNull());
+      expect(await screen.findByText('76 / 75 min total')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(await db.outbox.count()).toBe(1); // queued for sync
+      await u.click(screen.getByText('Rex: MDMA imprinted'));
+      expect(screen.queryByText('Rex: MDMA imprinted')).toBeNull();
     });
 
     it('does not fire when an already-imprinted odour is opened', async () => {

@@ -36,7 +36,7 @@ export function TimerScreen() {
   const now = useNow(runningHere ? 1000 : null);
 
   const total = odourTotal(sessions, corrections, dogId, odourId, now);
-  const [celebrate, dismissCelebration] = useCrossedTarget(total, !loading);
+  const [celebrate, dismissCelebration, celebrateNow] = useCrossedTarget(total, !loading);
 
   if (loading || !me) return null;
   if (!dog) return <Navigate to="/" replace />;
@@ -148,7 +148,8 @@ export function TimerScreen() {
           Add a session I forgot to time
         </button>
       </main>
-      <ManualEntrySheet open={manualOpen} onClose={() => setManualOpen(false)} />
+      <ManualEntrySheet open={manualOpen} onClose={() => setManualOpen(false)}
+        dogId={dog.id} odourId={odour.id} onCrossed={celebrateNow} />
       {celebrate && <Celebration dog={dog.name} odour={odour.name} onDone={dismissCelebration} />}
     </div>
   );
