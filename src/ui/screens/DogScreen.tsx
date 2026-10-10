@@ -84,7 +84,7 @@ export function DogScreen() {
       <main className="pad">
         <PillToggle value={group} onChange={(g) => setParams({ group: g }, { replace: true })} />
 
-        <ul style={{ listStyle: 'none', margin: '16px 0 0', padding: 0, display: 'grid', gap: 12 }}>
+        <ul style={{ listStyle: 'none', margin: '16px 0 0', padding: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
           {odoursIn(group).map((odour) => {
             const total = odourTotal(sessions, corrections, dog.id, odour.id, now);
             const imprinted = isImprinted(total);
@@ -102,7 +102,7 @@ export function DogScreen() {
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 36 }}>
                     <span data-odour-name style={{ fontSize: 20, fontWeight: 800 }}>{odour.name}</span>
                     {runningThis && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 800, color: 'var(--mustard)' }}>
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 800 }}>
                         <span data-testid="running-dot" aria-hidden="true" style={{
                           width: 10, height: 10, borderRadius: '50%', background: 'var(--stamp)',
                         }} />

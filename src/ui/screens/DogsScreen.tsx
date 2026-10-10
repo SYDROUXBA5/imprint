@@ -106,7 +106,7 @@ export function DogsScreen() {
           </div>
         )}
 
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 12 }}>
+        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
           {dogs.map((d) => {
             const line = progressLine(d.id, sessions, corrections, now);
             return (
