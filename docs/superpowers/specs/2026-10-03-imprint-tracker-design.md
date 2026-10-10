@@ -364,3 +364,37 @@ Security, not only by hiding buttons.
 `teams`, `odour_categories`, `odours`, `team_odours` sync through the outbox and
 incremental pull like `dogs`. Team delete-forever is an online-only RPC like the
 dog one.
+
+---
+
+## 14. Access by link, no accounts *(added 2026-10-10)*
+
+Supersedes email/password sign-up, invite codes, `create_unit` / `join_unit`,
+and role changes on the Members screen. There is one unit.
+
+### 14.1 What people see
+- **Two secret links** per unit: `…/#/trainer/<token>` and `…/#/handler/<token>`. The token is in the URL fragment, so it is never sent to the web host.
+- Opening a link shows **"Who are you?"**: the names already registered for that link's role as large buttons, plus "Add my name" (text field). Tap or add a name → straight into the app. No email, no password, nothing else to fill in.
+- A phone that has already entered opens directly on the Teams screen. A small "Paul · Switch" control on the Teams screen returns to "Who are you?" (shared phones, wrong tap).
+- A phone with no access (first visit without a link, storage cleared, freshly installed home-screen app on iPhone) sees: "Open the link your trainer sent you, or paste it here." with a paste field.
+- **Members screen** (trainer link only): two cards, "Trainer link — full control, share only with trainers" and "Handler link", each with Copy and Share, and "New link" (confirmation: "Everyone using the old link will need the new one."). Below: Trainers and Handlers lists with Remove.
+
+### 14.2 Rules
+- **Powers come from the link the phone used, never from the name.** A phone that entered by the handler link is a handler no matter which name is tapped, and can only pick handler names. A phone that entered by the trainer link is a trainer and picks trainer names.
+- Handler powers and trainer powers are exactly §13.5.
+- "Own running session" = same member (name), so a handler can stop their timer from another phone.
+- **New link** replaces the token for that role. Every phone that entered with the old one loses access until it opens the new link (the trainer's own phone that pressed the button keeps access when regenerating the trainer link). Names and history are untouched.
+- **Remove** a member: the name disappears from "Who are you?", phones currently using it lose access until they pick another name; history keeps the name. To really cut a person off, also make a new link.
+- Names are unique per role, case-insensitive, among non-removed members.
+- Tokens are 32 hex characters from a random UUID (122 random bits).
+
+### 14.3 How it works
+- Supabase **anonymous sign-in** gives each phone a silent identity (`auth.uid()`); Row Level Security stays the enforcement.
+- `unit_links` (unit_id, role, token, generation, created_at): one current row per role; readable only through a trainer-only function.
+- `devices` (user_id PK → auth.users, unit_id, scope `trainer`|`handler`, link_generation, member_id nullable, created_at). A device is **active** when its `link_generation` equals the current generation of its scope's link and its member exists and is not removed.
+- `members`: `user_id` is no longer used (nullable); `role` records which list the name belongs to.
+- Functions (security definer, executable by `authenticated` only): `enter_with_link(token)` → registers/updates the calling phone and returns `{unit_id, unit_name, scope, names[]}`; `choose_name(member_id)`; `add_name(name)`; `switch_name()` (clears the phone's member); trainer-only `get_links()`, `regenerate_link(role)`, `remove_member(member_id)`. Wrong or stale token → one uniform error.
+- All RLS helper functions (`my unit`, `is trainer`, `my member id` …) are rewritten on `devices`: trainer = active device with scope `trainer`.
+- **Setup, once:** `setup_unit(unit_name)` creates the unit, the default catalogue and both links and returns the two tokens. Executable only from the SQL editor (not by `anon` or `authenticated`). A second call is refused while a unit exists.
+- Removed: `create_unit`, `join_unit`, invite codes, email flows, "Make trainer / Make handler".
+- Project settings: anonymous sign-ins on; email provider not used.

@@ -2587,3 +2587,21 @@ their tests stay readable history.
 
 ### Task B6: reports
 - Team PDF and team CSV per §13.6; new CSV columns everywhere; dog PDF header shows breed and purpose and uses the team's categories. Tests as in Task A4.
+
+---
+
+# Amendments 3 — 2026-10-10 (spec §14: access by link, no accounts)
+
+### Task C1: schema and permissions
+`supabase/migrations/0007_link_access.sql` (+ realtime file if needed) and `tests/db/link-access.test.ts`.
+- Everything in §14.3. Rewrite the RLS helper functions on `devices`; drop or disable `create_unit`, `join_unit`, invite-code functions and columns' use. Keep every existing permission test meaningful by porting its setup to the new model (a test helper that creates a unit with `setup_unit`, enters phones with each link and picks names) rather than deleting tests.
+- Tests, each from a trainer-link phone, a handler-link phone, a phone with no link, and `anon`: wrong token refused with the uniform error; handler-link phone cannot choose a trainer name, cannot call `get_links` / `regenerate_link` / `remove_member`, cannot write anything but sessions (§13.5 unchanged); a handler-link phone that picks any name is still not a trainer; after `regenerate_link('handler')` old handler phones read zero rows and their writes are refused, trainer phones unaffected; after `regenerate_link('trainer')` the calling phone keeps access and other trainer phones lose it; removed member's phones lose access; two phones on the same name both work and either can stop that member's running session; `setup_unit` not executable by `anon`/`authenticated` and refused twice; no function in `public` executable by `anon`.
+
+### Task C2: app
+- `src/data/account.ts`: `signInAnonymously` when there is no session; `enterWithLink(token)`, `chooseName`, `addName`, `switchName`, `getLinks`, `regenerateLink`, `removeMember`; local "me" (unit, scope, member) persisted for offline starts. Role everywhere in the UI = device scope.
+- Routes `/trainer/:token` and `/handler/:token` → enter → "Who are you?" → `/`. Strip the token from the address bar after entering (replace the history entry). Paste field on the no-access screen accepts a full link or a bare token.
+- Losing access (stale link, removed name) while the app is open: stop syncing, keep unsynced local data, show the no-access screen with "Your link has changed. Ask your trainer for the new one."
+- Members screen per §14.1 (Copy uses the Clipboard API, Share uses the Web Share API when available). Remove invite code UI, email forms, Make trainer/handler.
+- Dev demo mode keeps working (`?demo=trainer` / `?demo=handler`) and gains a "Who are you?" preview at `?demo=who`.
+- README: replace sign-up instructions with the one-time setup (`select * from setup_unit('Unit name');`) and how the two links are formed.
+- Update or replace every test that touched sign-in, sign-up, invite codes or role changes.
