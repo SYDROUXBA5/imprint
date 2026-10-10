@@ -3,6 +3,7 @@ import { HashRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { db } from './data/db';
 import { supabaseRemote } from './data/remote';
 import { startSyncLoop } from './data/sync';
+import { demoRole } from './dev/demoMode';
 import { supabase } from './data/supabase';
 import type { Member } from './domain/types';
 import { useMe } from './hooks/useMe';
@@ -19,7 +20,7 @@ export default function App() {
   const unitId = me?.unit_id;
 
   useEffect(() => {
-    if (!unitId) return;
+    if (!unitId || demoRole()) return; // demo mode (dev only) never syncs
     try {
       return startSyncLoop({ db, remote: supabaseRemote(supabase), unitId }, supabase);
     } catch (e) {
