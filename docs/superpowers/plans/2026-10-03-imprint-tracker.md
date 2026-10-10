@@ -2540,3 +2540,50 @@ Carried over from the review of the Base44 version:
 ### Task 23 note
 
 Rémi approved a **public** repo + GitHub Pages on 2026-10-09. Still confirm the repo name with Rémi immediately before the first push.
+
+---
+
+# Amendments 2 — 2026-10-10 (spec §13: teams, dog details, breeds, odour catalogue)
+
+Same TDD rhythm. No live Supabase project exists and nothing is deployed, so the
+schema can change freely, but do it as a new additive migration so 0001–0004 and
+their tests stay readable history.
+
+### Task B1: schema and permissions
+`supabase/migrations/0005_teams_catalogue.sql` + `tests/db/teams-catalogue.test.ts`.
+- Tables: `teams` (id, unit_id, name, created_by, created_at, archived_at, updated_at), `odour_categories` (id, unit_id, name, sort, created_at, archived_at, updated_at), `odours` (id uuid, unit_id, category_id, name, created_at, archived_at, updated_at), `team_odours` (team_id, odour_id, unit_id, selected bool, updated_at, primary key (team_id, odour_id)), `deleted_teams` (team_id, unit_id, deleted_by, deleted_at, updated_at).
+- `dogs`: add `team_id` (not null, FK), `breed` (text, check in the nine ids of §13.3), `purpose` (text, check in `single`,`dual`).
+- `sessions.odour_id` becomes a FK to `odours(id)`; replace whatever fixed-list check 0001 has. A session's odour must belong to the session's unit.
+- Case-insensitive unique names (§13.4). Realtime publication for the new tables (keep the "realtime" file-naming rule the harness expects, or a separate `0006_…realtime.sql`).
+- `create_unit` seeds the default catalogue (§13.4) with stable, deterministic naming so tests can find rows by name.
+- RLS per §13.5: members of the unit can select; only active trainers insert/update teams, dogs, categories, odours, team_odours; no delete policies. Handlers: insert sessions, stop own running session, nothing else. **Handlers lose nothing they need to add time, and gain no write access to the new tables.** Archiving a team is refused while one of its dogs has a running session.
+- `delete_team_forever(team uuid)`: security definer, active trainer of the team's unit only, team must be archived, no running sessions; deletes corrections → sessions → dogs (writing `deleted_dogs` tombstones) → team_odours → team, writes `deleted_teams`; revoked from `public, anon`; same uniform "trainers only" error as `delete_dog_forever`.
+- Also revoke `anon` EXECUTE on the remaining security-definer helpers if RLS for `authenticated` still works afterwards (prove with a test); otherwise leave them and say why.
+- Tests from both roles and from another unit for every rule above.
+
+### Task B2: domain, local store, sync, actions
+- Replace the fixed `ODOURS` module with catalogue-driven helpers; keep a `DEFAULT_CATALOGUE` constant that mirrors what `create_unit` seeds (test that the two stay in sync, as the existing odour-sync test does). `BREEDS` constant (id, label). Row types for the new tables; `Dog` gains team_id, breed, purpose.
+- Dexie schema bump with the new tables; outbox + pull + realtime for them; tombstone purge for `deleted_teams` (team, its dogs, their sessions/corrections, matching outbox items).
+- Actions (trainer checks mirrored client-side): createTeam, renameTeam, archiveTeam, restoreTeam, deleteTeamForever (online RPC), setTeamOdours, addCategory, renameCategory, archiveCategory, restoreCategory, addOdour, renameOdour, archiveOdour, restoreOdour, addDog(name, teamId, breed, purpose), editDog, moveDog. Totals, flags, celebration, export helpers take odour ids from the catalogue.
+- Update every existing test and the dev demo seed (`src/dev/demoSeed.ts`): 3 teams (one archived), dogs with breeds and purposes, the four default categories, one custom category with one custom odour, different odour selections per team.
+
+### Task B3: screens — teams and dogs
+- Routes: `/` Teams; `/team/:teamId` dogs of a team; dog, timer, log routes as before; `/members` (the former Team screen, renamed in UI and route; `/team` no longer means members); `/archived` lists archived teams and dogs.
+- Teams screen: cards (name, dog count, running dot); trainer: "+ New team", "Members", "Odours", "Archived (n)". Handler: just the team cards.
+- Team screen: its dogs (card shows small breed drawing, name, "Breed · Purpose", progress line); trainer: "+ Add dog", settings sheet (rename, odours, reports, archive with confirmation).
+- Add/Edit dog sheet: name, breed picker (grid of the nine, large `BreedPortrait` playing on choice — use a placeholder drawing until Task B5 lands the art), purpose toggle, team select (edit only).
+- Dog screen: category tabs from the team's odours (`?cat=`), default to the running odour's category else the first. Handler sees no Log link; `/dog/:id/log` redirects handlers to the dog screen.
+- Archived screen: teams (restore, delete forever with typed name, online-only) and dogs.
+- Handler-side tests for every hidden control and redirected route.
+
+### Task B4: odour catalogue screens
+- `/odours` (trainer only): categories with their odours; add category, add odour, rename, archive, "Archived" section with restore. Duplicate names rejected with a clear message.
+- Team odour picker (in new-team flow and team settings): categories with tick-boxes, "select all" per category; at least one odour required.
+- Dog screen, timer, log, manual entry all read names from the catalogue; "(not in current list)" marking per §13.4.
+
+### Task B5: breed art and `BreedPortrait`
+- Art files arrive at `public/breeds/<id>.webp` (made separately). Component per §13.3 with per-breed nose points in a small config, reduced-motion fallback, tests for: plays on choice, static when reduced motion, alt text = breed label.
+- Add the nine files to the PWA precache.
+
+### Task B6: reports
+- Team PDF and team CSV per §13.6; new CSV columns everywhere; dog PDF header shows breed and purpose and uses the team's categories. Tests as in Task A4.

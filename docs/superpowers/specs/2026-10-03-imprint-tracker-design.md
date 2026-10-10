@@ -305,3 +305,62 @@ contrast meets WCAG AA.
 Dog details beyond name, custom odours, a target other than
 75 min, App Store release, push notifications, membership of several units,
 dark mode.
+
+---
+
+## 13. Teams, dog details, breeds, odour catalogue *(added 2026-10-10)*
+
+Supersedes decision 4 (fixed odour list), decision 6 (name only) and the
+handler row "See … log" in §8. Words: the **unit** is the organisation and its
+people (screen label: **Members**, formerly "Team"). A **team** is a group of dogs.
+
+### 13.1 Teams
+- A team is a named group of dogs inside the unit. Every dog belongs to exactly one team.
+- Home screen = active teams (name, dog count, a dot if a timer is running in it). Tap → that team's dogs (the former Dogs screen, scoped to the team).
+- Trainer only: create a team (name + which odours it trains, §13.4), rename it, archive it (refused while any of its dogs has a running timer; the team and its dogs disappear for everyone but stay in history), restore it, and delete an **archived** team forever by typing its name (removes its dogs, their sessions and corrections; `deleted_teams` + `deleted_dogs` tombstones so other phones purge).
+- Dog-level archive / restore / delete-forever are unchanged. The Archived screen lists archived teams and archived dogs (with their team name).
+
+### 13.2 Dog details
+- name, team, **breed** (§13.3), **purpose**: `single` | `dual` ("Single purpose" / "Dual purpose"). A label only; it changes no behaviour.
+- All required when a trainer adds a dog. Trainer-only edit (name, breed, purpose, move to another active team).
+- Shown on the dog card (small breed drawing, "Malinois · Dual purpose") and the dog screen header.
+
+### 13.3 Breeds and the breed animation
+- Fixed list, ids: `malinois` (Belgian Malinois), `german-shepherd`, `dutch-shepherd`, `labrador`, `golden-retriever`, `bloodhound`, `hound`, `springer-spaniel`, `other` (generic dog).
+- Art: one ink drawing per breed in the Field Guide style at `public/breeds/<id>.webp`, drawn on a light paper tone and rendered with `mix-blend-mode: multiply` so it sits on the ruled paper. Precached for offline.
+- `BreedPortrait` component. When a breed is chosen in the picker it plays: ink reveal + stamp settle (~0.9 s), then an idle "sniff" loop (small head-bob of the drawing plus animated scent wisps rising from a per-breed nose point). `prefers-reduced-motion`: static drawing. Sizes: large in the picker (plays on every choice), medium in the dog header (plays once on open), small and static on cards.
+
+### 13.4 Odour catalogue
+- One catalogue per unit: **categories → odours**, stored in the database. Seeded when the unit is created: Narcotics (the 6 from §6), Explosives (the 11 from §6), Cadaver (Human remains), Bed bugs (Live bed bugs, Viable eggs).
+- Trainer only: add a category; add an odour to a category; rename either; "remove" either = archive (hidden from pickers, history kept, restorable). Nothing with history is ever hard-deleted from the catalogue. Names are unique per unit, case-insensitive (categories; odours within a category).
+- Per team, a trainer ticks which odours the team trains on (`team_odours`, a row per team+odour with a `selected` flag, never deleted, so it syncs like everything else).
+- The dog screen shows only its team's selected, non-archived odours, grouped by category tabs (only categories with at least one). With more than three categories the tabs scroll sideways. The tab still lives in the URL (`?cat=<category id>`).
+- An odour with logged time that is later unticked or archived stays in the log and reports, marked "(not in current list)".
+- Sessions reference the odour by its catalogue id. The target stays 75:00 for every odour.
+
+### 13.5 Roles *(replaces the §8 table)*
+
+| Action | Handler | Trainer |
+|---|---|---|
+| See active teams, their dogs and each dog's progress | ✓ | ✓ |
+| Start / stop own timed session; add a manual session | ✓ | ✓ |
+| See the log; correct or void a session | | ✓ |
+| Create / rename / archive / restore a team; delete an archived team forever | | ✓ |
+| Add / edit / move / archive / restore a dog; delete an archived dog forever | | ✓ |
+| Edit the odour catalogue; choose a team's odours | | ✓ |
+| Reports: team PDF, team CSV, dog PDF, all-sessions CSV | | ✓ |
+| Members: remove, change role, regenerate invite code | | ✓ |
+
+A handler can do two things: choose a dog and add time. Enforced by Row Level
+Security, not only by hiding buttons.
+
+### 13.6 Reports
+- **Team PDF** (`imprint-<team>-<yyyy-mm-dd>.pdf`): one page per active dog in the team, the §8a dog page with breed and purpose in the header and the team's categories as sections.
+- **Team CSV**: the §8a CSV limited to that team.
+- The all-sessions CSV and both team files gain columns: team, breed, purpose, category.
+- Buttons live on the team's settings sheet (trainer only).
+
+### 13.7 Sync
+`teams`, `odour_categories`, `odours`, `team_odours` sync through the outbox and
+incremental pull like `dogs`. Team delete-forever is an online-only RPC like the
+dog one.
