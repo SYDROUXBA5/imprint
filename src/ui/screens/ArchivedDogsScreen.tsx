@@ -51,11 +51,11 @@ export function ArchivedDogsScreen() {
                 {`Archived ${formatDay(localDate(new Date(dog.archived_at!)))}`}
               </p>
               <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-                <button type="button" className="btn btn-primary" style={{ flex: 1 }}
+                <button type="button" className="btn btn-primary" style={{ flex: 1, fontSize: 16, padding: '0 12px' }}
                   aria-label={`Restore ${dog.name}`} onClick={() => restore(dog)}>
                   Restore
                 </button>
-                <button type="button" className="btn" style={{ flex: 1, color: 'var(--stamp)', borderColor: 'var(--stamp)' }}
+                <button type="button" className="btn" style={{ flex: 1, fontSize: 16, padding: '0 12px', color: 'var(--stamp)', borderColor: 'var(--stamp)' }}
                   aria-label={`Delete ${dog.name} forever`} disabled={!online}
                   onClick={() => { setError(''); setDeleting(dog); }}>
                   Delete forever
@@ -119,7 +119,7 @@ function DeleteForeverSheet({ dog, sessionCount, online, onClose, onConfirm }: D
         <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
           <button type="button" className="btn" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
           <button type="submit" className="btn" disabled={!matches || !online || busy}
-            style={{ flex: 1, background: 'var(--stamp)', borderColor: 'var(--stamp)', color: 'var(--paper)' }}>
+            style={{ flex: 1, fontSize: 16, padding: '0 12px', background: 'var(--stamp)', borderColor: 'var(--stamp)', color: 'var(--paper)' }}>
             Delete forever
           </button>
         </div>
