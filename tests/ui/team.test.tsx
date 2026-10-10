@@ -105,7 +105,7 @@ describe('TeamScreen', () => {
       await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Make new code' }));
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
       expect(account.regenerateInviteCode).toHaveBeenCalledTimes(1);
-      expect(account.loadMe).toHaveBeenCalled();
+      await waitFor(() => expect(account.loadMe).toHaveBeenCalled());
       expect(await screen.findByText('NEW4CD')).toBeInTheDocument();
     });
   });
@@ -116,7 +116,7 @@ describe('TeamScreen', () => {
       renderTeam();
       await userEvent.click((await rowOf('Hana')).getByRole('button', { name: 'Make Hana a trainer' }));
       await waitFor(() => expect(account.setRole).toHaveBeenCalledWith('mA', 'trainer'));
-      expect(account.loadMe).toHaveBeenCalled();
+      await waitFor(() => expect(account.loadMe).toHaveBeenCalled());
       const row = await rowOf('Hana');
       await waitFor(() => expect(row.getByText('Trainer')).toBeInTheDocument());
       expect(row.getByRole('button', { name: 'Make Hana a handler' })).toBeInTheDocument();
@@ -127,6 +127,7 @@ describe('TeamScreen', () => {
       renderTeam();
       await userEvent.click((await rowOf('Ana')).getByRole('button', { name: 'Make Ana a handler' }));
       await waitFor(() => expect(account.setRole).toHaveBeenCalledWith('mN', 'handler'));
+      await waitFor(() => expect(account.loadMe).toHaveBeenCalled()); // let the action finish before the test ends
     });
 
     it('shows "A unit needs at least one trainer." when the server blocks it', async () => {
@@ -157,7 +158,7 @@ describe('TeamScreen', () => {
       await userEvent.click((await rowOf('Paul')).getByRole('button', { name: 'Remove Paul' }));
       await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Remove Paul' }));
       await waitFor(() => expect(account.removeMember).toHaveBeenCalledWith('mP'));
-      expect(account.loadMe).toHaveBeenCalled();
+      await waitFor(() => expect(account.loadMe).toHaveBeenCalled());
       const removed = within(await screen.findByRole('region', { name: 'Removed' }));
       expect(await removed.findByText('Paul')).toBeInTheDocument();
       expect(within(screen.getByRole('region', { name: 'Members' })).queryByText('Paul')).toBeNull();

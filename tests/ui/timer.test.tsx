@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, ME_KEY } from '../../src/data/db';
 import type { Dog, Member, Session } from '../../src/domain/types';
+import { FAKE_CLOCK } from '../fakeClock';
 
 vi.mock('../../src/data/repo', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../src/data/repo')>();
@@ -49,8 +50,7 @@ const advance = (ms: number) => act(async () => { await vi.advanceTimersByTimeAs
 const clock = () => screen.getByTestId('session-clock');
 
 beforeEach(async () => {
-  // Leave setImmediate real: fake-indexeddb schedules its work with it, and a faked one kills Dexie transactions halfway.
-  vi.useFakeTimers({ shouldAdvanceTime: true, toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'] });
+  vi.useFakeTimers(FAKE_CLOCK);
   vi.setSystemTime(new Date(T0));
   await db.delete();
   await db.open();

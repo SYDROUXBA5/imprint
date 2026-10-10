@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, ME_KEY } from '../../src/data/db';
 import { ODOURS } from '../../src/domain/odours';
 import type { Dog, Member, Session } from '../../src/domain/types';
+import { FAKE_CLOCK } from '../fakeClock';
 import { DogScreen } from '../../src/ui/screens/DogScreen';
 
 const trainer: Member = { id: 'mT', unit_id: 'u1', user_id: 'uT', name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
@@ -212,7 +213,7 @@ describe('DogScreen', () => {
     const tickers = (spy: ReturnType<typeof spyIntervals>) => spy.mock.calls.filter(([, ms]) => ms === 1000);
 
     it('does not tick while this dog has no running session', async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.useFakeTimers(FAKE_CLOCK);
       const spy = spyIntervals();
       await seed();
       renderDog();
@@ -221,20 +222,20 @@ describe('DogScreen', () => {
     });
 
     it('ticks while this dog has a running session, and the totals move', async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.useFakeTimers(FAKE_CLOCK);
       vi.setSystemTime(new Date('2026-10-05T10:00:00Z'));
       const spy = spyIntervals();
       await seed(trainer, [running('r', 'heroin', '2026-10-05T10:00:00Z'), manual('h', 'heroin', 41 * 60)]);
       renderDog();
       const heroin = (await screen.findByText('Heroin')).closest('li')!;
       expect(within(heroin).getByText('41/75')).toBeInTheDocument();
-      expect(tickers(spy).length).toBeGreaterThan(0);
+      await waitFor(() => expect(tickers(spy).length).toBeGreaterThan(0)); // the interval starts in an effect
       await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
       expect(within(heroin).getByText('42/75')).toBeInTheDocument();
     });
 
     it('does not tick for a timer running on another dog', async () => {
-      vi.useFakeTimers({ shouldAdvanceTime: true });
+      vi.useFakeTimers(FAKE_CLOCK);
       const spy = spyIntervals();
       await seed(trainer, [{ ...running('r', 'mdma', new Date().toISOString()), dog_id: 'd2' }]);
       renderDog();
