@@ -39,7 +39,10 @@ export async function enterWithLink(token: string): Promise<Entered> {
   const { data, error } = await supabase.rpc('enter_with_link', { link_token: token.trim().toLowerCase() });
   fail(error);
   const entered = data as Entered;
-  await appDb.transaction('rw', appDb.meta, async () => {
+  await appDb.transaction('rw', appDb.tables, async () => {
+    // Anything on the phone from another unit (or from no known unit) is not ours to show or to send.
+    const before = asMeRecord((await appDb.meta.get(ME_KEY))?.value);
+    if (before?.unit_id !== entered.unit_id) await Promise.all(appDb.tables.map((t) => t.clear()));
     await appDb.meta.put({ key: ME_KEY, value: { unit_id: entered.unit_id, scope: entered.scope, member_id: null } satisfies MeRecord });
     await appDb.meta.delete(ACCESS_KEY);
   });

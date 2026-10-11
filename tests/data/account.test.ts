@@ -33,6 +33,31 @@ beforeEach(async () => {
 });
 
 describe('enterWithLink', () => {
+  it('clears data left on the phone by another unit, and its sync cursors', async () => {
+    await db.meta.put({ key: ME_KEY, value: { unit_id: 'other-unit', scope: 'trainer', member_id: 'mX' } });
+    await db.meta.put({ key: 'cursor:dogs', value: '2026-01-01T00:00:00Z' });
+    await db.teams.put({ id: 't9', unit_id: 'other-unit', name: 'Old team' } as never);
+    await db.dogs.put({ id: 'd9', unit_id: 'other-unit', team_id: 't9', name: 'Old dog' } as never);
+    await db.outbox.add({ table: 'dogs', op: 'insert', row: { id: 'd9' }, created_at: '', status: 'pending' });
+    await account.enterWithLink(TOKEN);
+    expect(await db.teams.count()).toBe(0);
+    expect(await db.dogs.count()).toBe(0);
+    expect(await db.outbox.count()).toBe(0);
+    expect(await db.meta.get('cursor:dogs')).toBeUndefined();
+    expect((await db.meta.get(ME_KEY))?.value).toEqual({ unit_id: 'u1', scope: 'handler', member_id: null });
+  });
+
+  it('keeps local data and unsynced work when the phone re-enters the same unit', async () => {
+    await db.meta.put({ key: ME_KEY, value: { unit_id: 'u1', scope: 'handler', member_id: 'm1' } });
+    await db.meta.put({ key: 'cursor:dogs', value: '2026-01-01T00:00:00Z' });
+    await db.dogs.put({ id: 'd1', unit_id: 'u1', team_id: 't1', name: 'Juno' } as never);
+    await db.outbox.add({ table: 'sessions', op: 'insert', row: { id: 's1' }, created_at: '', status: 'pending' });
+    await account.enterWithLink(TOKEN);
+    expect(await db.dogs.count()).toBe(1);
+    expect(await db.outbox.count()).toBe(1);
+    expect((await db.meta.get('cursor:dogs'))?.value).toBe('2026-01-01T00:00:00Z');
+  });
+
   it('signs in anonymously when the phone has no session, then opens the link', async () => {
     fake.auth.getSession.mockResolvedValue({ data: { session: null }, error: null });
     await account.enterWithLink(TOKEN);
