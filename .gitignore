@@ -27,6 +27,3 @@ dist-ssr
 test-results/
 playwright-report/
 
-# Breed art: local preview copies only (OpenArt free-plan watermark). Do not commit until clean files replace them.
-public/breeds/*.webp
-docs/design/breed-sheet-preview.jpg

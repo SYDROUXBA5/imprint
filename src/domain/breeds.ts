@@ -18,15 +18,15 @@ export const BREEDS: readonly { id: BreedId; label: string }[] = [
  * wisps in BreedPortrait drift in to this point. All nine drawings are side profiles facing left.
  */
 export const BREED_NOSES: Readonly<Record<BreedId, { readonly x: number; readonly y: number }>> = {
-  'malinois': { x: 6.9, y: 41.5 },
-  'german-shepherd': { x: 6.9, y: 38.3 },
-  'dutch-shepherd': { x: 6.9, y: 37.2 },
-  'labrador': { x: 6.9, y: 28.8 },
-  'golden-retriever': { x: 6.8, y: 26.1 },
-  'bloodhound': { x: 6.8, y: 31.7 },
-  'hound': { x: 6.9, y: 30.1 },
-  'springer-spaniel': { x: 6.8, y: 29.5 },
-  'other': { x: 6.9, y: 33.9 },
+  'malinois': { x: 6.1, y: 42.4 },
+  'german-shepherd': { x: 6.1, y: 41.3 },
+  'dutch-shepherd': { x: 6.1, y: 40.7 },
+  'labrador': { x: 6.1, y: 35.6 },
+  'golden-retriever': { x: 6.1, y: 36.7 },
+  'bloodhound': { x: 6.2, y: 31.5 },
+  'hound': { x: 6.1, y: 39.6 },
+  'springer-spaniel': { x: 6.1, y: 33.9 },
+  'other': { x: 6.1, y: 39.3 },
 };
 
 export const PURPOSES: readonly { id: Purpose; label: string }[] = [
