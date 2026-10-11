@@ -34,11 +34,12 @@ function EntryForm({ dogId, odourId, onClose, onCrossed }: Omit<ManualEntrySheet
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!me || busy) return;
+    if (busy) return;
     const text = minutes.trim();
     if (!WHOLE_MINUTES.test(text) || Number(text) <= 0) { setError('Enter whole minutes above 0'); return; }
     if (!date) { setError('Pick a date'); return; }
     if (date > localDate(new Date())) { setError('The date cannot be in the future'); return; }
+    if (!me) return; // not read from the local database yet
     setBusy(true);
     setError('');
     try {

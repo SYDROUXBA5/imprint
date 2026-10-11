@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, ME_KEY } from '../../src/data/db';
 import type { Dog, Member, Session } from '../../src/domain/types';
 import { FAKE_CLOCK } from '../fakeClock';
-import { ODOURS, dogRow, pick, seedCatalogue, team } from '../fixtures';
+import { ODOURS, dogRow, meRecord, pick, seedCatalogue, team } from '../fixtures';
 import { DogScreen } from '../../src/ui/screens/DogScreen';
 
 const trainer: Member = { id: 'mT', unit_id: 'u1', user_id: 'uT', name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
@@ -20,7 +20,7 @@ const running = (id: string, odour: string, startedAt: string): Session => ({
 });
 
 async function seed(me: Member = trainer, sessions: Session[] = []) {
-  await db.meta.put({ key: ME_KEY, value: me });
+  await db.meta.put({ key: ME_KEY, value: meRecord(me) });
   await db.members.bulkPut([trainer, handler]);
   await seedCatalogue(db);
   await db.dogs.put(rex);
@@ -250,7 +250,7 @@ describe('DogScreen', () => {
       expect(screen.getByRole('button', { name: 'Progress report (PDF)' })).toBeInTheDocument();
       expect(screen.getByRole('link', { name: 'Log' })).toBeInTheDocument();
       unmount();
-      await db.meta.put({ key: ME_KEY, value: handler });
+      await db.meta.put({ key: ME_KEY, value: meRecord(handler) });
       renderDog();
       await screen.findByText('Cocaine');
       expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();

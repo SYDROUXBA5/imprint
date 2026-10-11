@@ -2,7 +2,7 @@ import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { dogRow, seedCatalogue, team } from '../fixtures';
+import { dogRow, meRecord, seedCatalogue, team } from '../fixtures';
 import type { Dog, Member, Session } from '../../src/domain/types';
 
 const fake = { rpc: vi.fn() };
@@ -21,7 +21,7 @@ const session = (id: string, dogId: string): Session => ({
 
 let online = true;
 async function seed(me: Member, extra: Dog[] = []) {
-  await db.meta.put({ key: ME_KEY, value: me });
+  await db.meta.put({ key: ME_KEY, value: meRecord(me) });
   await db.members.bulkPut([tess, paul]);
   await seedCatalogue(db);
   await db.dogs.bulkPut([dog('d1', 'Bella', '2026-10-05T10:00:00Z'), dog('d2', 'Rex', null), ...extra]);

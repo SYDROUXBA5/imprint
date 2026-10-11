@@ -2,11 +2,11 @@ import { useState, type FormEvent } from 'react';
 import { db } from '../../data/db';
 import { addCorrection } from '../../data/repo';
 import { formatClock } from '../../domain/format';
-import type { Member } from '../../domain/types';
+import type { Me } from '../../domain/types';
 import { Sheet } from '../components/Sheet';
 
 interface CorrectionSheetProps {
-  me: Member;
+  me: Me;
   sessionId: string;
   /** One line saying which session this is, e.g. "MDMA · 1 Oct 2026 · Hana". */
   summary: string;

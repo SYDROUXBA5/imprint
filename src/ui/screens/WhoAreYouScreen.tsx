@@ -1,0 +1,141 @@
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { addName, chooseName, loadNames, markLost, type Entered, type NameChoice } from '../../data/account';
+import type { Role } from '../../domain/types';
+import { HeaderBar } from '../components/HeaderBar';
+import { friendlyLinkError } from '../linkErrors';
+
+const LISTS: Record<Role, string> = { trainer: 'Trainers', handler: 'Handlers' };
+
+function Shell({ unitName, scope, children }: { unitName?: string; scope: Role; children: ReactNode }) {
+  return (
+    <div className="screen">
+      <HeaderBar title="Who are you?" />
+      <main className="pad">
+        <p style={{ margin: '0 0 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, flexWrap: 'wrap', textAlign: 'center' }}>
+          {unitName && <span style={{ fontWeight: 800, overflowWrap: 'anywhere' }}>{unitName}</span>}
+          <span style={{
+            padding: '2px 10px', border: '1.5px solid var(--ink)', borderRadius: 999, fontSize: 14, fontWeight: 800,
+            background: scope === 'trainer' ? 'var(--mustard)' : 'var(--paper)',
+          }}>
+            {LISTS[scope]}
+          </span>
+        </p>
+        {children}
+      </main>
+    </div>
+  );
+}
+
+export interface WhoAreYouViewProps {
+  unitName?: string;
+  scope: Role;
+  names: NameChoice[];
+  busy?: boolean;
+  error?: string;
+  onChoose: (memberId: string) => void;
+  onAdd: (name: string) => void;
+}
+
+/** The names on this list as big buttons, and a way to add yours. */
+function Body({ names, busy = false, error = '', onChoose, onAdd }: Omit<WhoAreYouViewProps, 'unitName' | 'scope'>) {
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const open = adding || names.length === 0;
+
+  const submit = (e: FormEvent) => {
+    e.preventDefault();
+    const clean = name.trim();
+    if (clean) onAdd(clean);
+  };
+
+  return (
+    <>
+      {names.length === 0 && (
+        <p style={{ textAlign: 'center', fontSize: 18 }}>Nobody is on this list yet. Add your name to start.</p>
+      )}
+      {names.length > 0 && (
+        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 12 }}>
+          {names.map((n) => (
+            <li key={n.id}>
+              <button type="button" className="btn" disabled={busy} onClick={() => onChoose(n.id)}
+                style={{ width: '100%', minHeight: 68, fontSize: 24, borderWidth: 2, overflowWrap: 'anywhere' }}>
+                {n.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      {error && <p role="alert" className="error" style={{ fontSize: 17 }}>{error}</p>}
+      {open ? (
+        <form onSubmit={submit} aria-label="Add my name" style={{ marginTop: 20 }}>
+          <label className="label" htmlFor="who-name">Your name</label>
+          <input id="who-name" className="field" value={name} required maxLength={60} autoComplete="name"
+            enterKeyHint="go" onChange={(e) => setName(e.target.value)} />
+          <button type="submit" className="btn btn-primary" disabled={busy} style={{ width: '100%', marginTop: 12 }}>
+            Add and continue
+          </button>
+        </form>
+      ) : (
+        <button type="button" className="btn" disabled={busy} onClick={() => setAdding(true)}
+          style={{ width: '100%', marginTop: 20, borderStyle: 'dashed' }}>
+          Add my name
+        </button>
+      )}
+    </>
+  );
+}
+
+/** "Who are you?": the names on this list as big buttons, and a way to add yours. Tap and you are in. */
+export function WhoAreYouView({ unitName, scope, ...body }: WhoAreYouViewProps) {
+  return <Shell unitName={unitName} scope={scope}><Body {...body} /></Shell>;
+}
+
+/** The screen a phone lands on after opening a link, and after "Switch": it fetches the list and signs in. */
+export function WhoAreYouScreen({ scope }: { scope: Role }) {
+  const [entered, setEntered] = useState<Entered | null>(null);
+  const [loadError, setLoadError] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoadError('');
+    try {
+      setEntered(await loadNames());
+    } catch (e) {
+      // The link was replaced since this phone opened it: same as losing access anywhere else.
+      if (e instanceof Error && /invalid link/i.test(e.message)) await markLost();
+      else setLoadError(friendlyLinkError(e, 'Needs signal to show the names.'));
+    }
+  }, []);
+  useEffect(() => { void load(); }, [load]);
+
+  async function run(work: () => Promise<void>) {
+    setBusy(true);
+    setError('');
+    try {
+      await work();
+    } catch (e) {
+      setError(friendlyLinkError(e, 'Needs signal to sign in.'));
+      if (e instanceof Error && /name not available/i.test(e.message)) void load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // One Shell throughout, so the header does not flicker as the names arrive.
+  return (
+    <Shell unitName={entered?.unit_name} scope={entered?.scope ?? scope}>
+      {loadError ? (
+        <>
+          <p role="alert" className="error" style={{ fontSize: 17 }}>{loadError}</p>
+          <button type="button" className="btn" style={{ width: '100%', marginTop: 12 }} onClick={() => void load()}>Try again</button>
+        </>
+      ) : !entered ? (
+        <p role="status" style={{ textAlign: 'center' }}>Getting the names&hellip;</p>
+      ) : (
+        <Body names={entered.names} busy={busy} error={error}
+          onChoose={(id) => void run(() => chooseName(id))} onAdd={(name) => void run(() => addName(name))} />
+      )}
+    </Shell>
+  );
+}

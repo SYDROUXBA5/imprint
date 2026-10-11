@@ -8,6 +8,8 @@ export interface SyncDeps {
   remote: RemoteStore;
   unitId: string;
   now?: () => Date;
+  /** The server stopped letting this phone in (see RemoteStore.hasAccess). The loop has stopped itself. */
+  onLostAccess?: () => void;
 }
 
 const SERVER_FIELDS = ['server_received_at', 'client_clock_offset_s', 'updated_at'];
@@ -24,6 +26,10 @@ const CURSOR_OVERLAP_MS = 5000;
 const STALE_MS = 24 * 60 * 60 * 1000;
 
 const isPermanent = (e: RemoteError) => !!e.code && PERMANENT_CODES.has(e.code);
+const RLS_REFUSAL = '42501';
+
+/** False only when the server says this phone is out. Not being able to ask is not "out". */
+const stillIn = async (d: SyncDeps) => (await d.remote.hasAccess(d.unitId)) !== false;
 const nowOf = (d: SyncDeps) => (d.now ?? (() => new Date()))();
 
 async function send(d: SyncDeps, item: OutboxItem): Promise<{ error?: RemoteError }> {
@@ -122,7 +128,7 @@ export async function takeNotices(db: ImprintDB): Promise<string[]> {
   });
 }
 
-export async function pushOutbox(d: SyncDeps) {
+export async function pushOutbox(d: SyncDeps): Promise<{ pushed: number; rejected: number; stalled: boolean; lostAccess?: true }> {
   const items = await d.db.outbox.where('status').equals('pending').sortBy('seq');
   let pushed = 0, rejected = 0;
   const discarded = new Set<number>();
@@ -134,6 +140,10 @@ export async function pushOutbox(d: SyncDeps) {
       pushed++;
     } else if (error.code === FK_VIOLATION && await lostItsParent(d.db, item)) {
       for (const seq of await discard(d.db, item)) discarded.add(seq);
+    } else if (error.code === RLS_REFUSAL && !(await stillIn(d))) {
+      // Not a verdict on this item: the phone lost its access (the link changed, the name was removed).
+      // Leave everything pending, so it goes through once the phone is let in again.
+      return { pushed, rejected, stalled: true, lostAccess: true };
     } else if (isPermanent(error)) {
       await d.db.outbox.update(item.seq!, { status: 'rejected', error: error.message });
       rejected++;
@@ -171,6 +181,8 @@ export async function pullChanges(d: SyncDeps): Promise<void> {
 }
 
 export async function syncOnce(d: SyncDeps) {
+  // Ask first: a phone that is out would have every unsent change refused, so send nothing.
+  if (!(await stillIn(d))) return { pushed: 0, rejected: 0, stalled: true, lostAccess: true as const };
   const push = await pushOutbox(d);
   if (!push.stalled) await pullChanges(d);
   return push;
@@ -194,10 +206,16 @@ export async function syncStatus(db: ImprintDB, now = new Date()) {
  */
 export function startSyncLoop(d: SyncDeps, client: SupabaseClient, intervalMs = 30_000): () => void {
   let busy = false;
+  let stopped = false;
   const run = async () => {
-    if (busy || !navigator.onLine) return;
+    if (busy || stopped || !navigator.onLine) return;
     busy = true;
-    try { await syncOnce(d); } catch { /* retried on the next tick */ } finally { busy = false; }
+    try {
+      if ((await syncOnce(d)).lostAccess) {
+        stop();
+        d.onLostAccess?.();
+      }
+    } catch { /* retried on the next tick */ } finally { busy = false; }
   };
   const channel = client.channel(`unit-${d.unitId}`);
   for (const table of [
@@ -209,10 +227,13 @@ export function startSyncLoop(d: SyncDeps, client: SupabaseClient, intervalMs = 
   channel.subscribe();
   window.addEventListener('online', run);
   const timer = setInterval(run, intervalMs);
-  void run();
-  return () => {
+  function stop() {
+    if (stopped) return;
+    stopped = true;
     clearInterval(timer);
     window.removeEventListener('online', run);
     void client.removeChannel(channel);
-  };
+  }
+  void run();
+  return stop;
 }

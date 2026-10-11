@@ -11,20 +11,31 @@ export type Purpose = 'single' | 'dual';
 export interface Unit {
   id: string;
   name: string;
-  invite_code: string;
   created_at: string;
   updated_at?: string;
 }
 
+/** A name on one of the two lists ("Who are you?"). `role` says which list; it is not what anyone may do. */
 export interface Member {
   id: string;
   unit_id: string;
-  user_id: string;
+  user_id?: string | null;
   name: string;
   role: Role;
   joined_at: string;
   removed_at: string | null;
   updated_at?: string;
+}
+
+/**
+ * Who this phone is right now. `role` is the scope of the link the phone entered by: the one thing that
+ * decides what it may do. `id` and `name` are the name it picked.
+ */
+export interface Me {
+  id: string;
+  unit_id: string;
+  role: Role;
+  name: string;
 }
 
 /** A named group of dogs inside the unit (spec §13.1). */

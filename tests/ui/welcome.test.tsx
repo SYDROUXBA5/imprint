@@ -1,134 +1,88 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Member } from '../../src/domain/types';
 
-const account = vi.hoisted(() => ({
-  signIn: vi.fn(), signUp: vi.fn(), createUnit: vi.fn(), joinUnit: vi.fn(), loadMe: vi.fn(), hasSession: vi.fn(),
-}));
-vi.mock('../../src/data/account', () => account);
-
+vi.mock('../../src/data/account');
+const account = await import('../../src/data/account');
 const { WelcomeScreen } = await import('../../src/ui/screens/WelcomeScreen');
 
-const member: Member = { id: 'm1', unit_id: 'u1', user_id: 'a1', name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
+const TOKEN = '0123456789abcdef0123456789abcdef';
+const entered = { unit_id: 'u1', unit_name: 'Wells K9', scope: 'handler' as const, names: [] };
 
 beforeEach(() => {
   vi.resetAllMocks();
-  account.hasSession.mockResolvedValue(false);
-  account.loadMe.mockResolvedValue(null);
+  vi.mocked(account.enterWithLink).mockResolvedValue(entered);
 });
 
-async function signInAs(email = 'tess@example.test', password = 'secret-pw') {
-  await userEvent.type(screen.getByLabelText('Email'), email);
-  await userEvent.type(screen.getByLabelText('Password'), password);
-  await userEvent.click(screen.getByRole('button', { name: 'Continue' }));
+async function paste(text: string) {
+  await userEvent.click(screen.getByLabelText('Your link'));
+  await userEvent.paste(text);
+  await userEvent.click(screen.getByRole('button', { name: 'Open' }));
 }
 
-describe('WelcomeScreen', () => {
-  it('shows Sign in first, with a drawing and a Sign up tab', async () => {
+describe('WelcomeScreen (a phone with no access)', () => {
+  it('tells a first-time visitor to open the link they were sent, or paste it', () => {
     render(<WelcomeScreen />);
-    expect(await screen.findByRole('button', { name: 'Sign in', pressed: true })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Sign up', pressed: false })).toBeInTheDocument();
+    expect(screen.getByText('Open the link your trainer sent you, or paste it here.')).toBeInTheDocument();
     expect(screen.getByRole('img', { name: /dog/i })).toBeInTheDocument();
-    expect(screen.queryByLabelText('Your name')).toBeNull();
+    expect(screen.getByLabelText('Your link')).toBeInTheDocument();
   });
 
-  it('signs in and, with no unit yet, moves on to create or join', async () => {
-    account.signIn.mockResolvedValue(undefined);
+  it('has no email, password, sign-up or invite code any more', () => {
     render(<WelcomeScreen />);
-    await signInAs();
-    expect(account.signIn).toHaveBeenCalledWith('tess@example.test', 'secret-pw');
-    expect(await screen.findByRole('heading', { name: 'Join or start a unit' })).toBeInTheDocument();
+    for (const label of [/email/i, /password/i, /invite/i, /unit name/i]) expect(screen.queryByLabelText(label)).toBeNull();
+    for (const name of [/sign up/i, /sign in/i, /create/i, /join/i]) expect(screen.queryByRole('button', { name })).toBeNull();
   });
 
-  it('stays out of the way when the account already belongs to a unit', async () => {
-    account.signIn.mockResolvedValue(undefined);
-    account.loadMe.mockResolvedValue(member);
+  it('after the link has changed, says so', () => {
+    render(<WelcomeScreen lost />);
+    expect(screen.getByText('Your link has changed. Ask your trainer for the new one.')).toBeInTheDocument();
+    expect(screen.queryByText('Open the link your trainer sent you, or paste it here.')).toBeNull();
+    expect(screen.getByLabelText('Your link')).toBeInTheDocument(); // and the new one can be pasted
+  });
+
+  it('opens a whole pasted link', async () => {
     render(<WelcomeScreen />);
-    await signInAs();
-    expect(account.loadMe).toHaveBeenCalled();
-    expect(screen.queryByRole('heading', { name: 'Join or start a unit' })).toBeNull();
+    await paste(`https://sydrouxba5.github.io/imprint/#/handler/${TOKEN}`);
+    expect(account.enterWithLink).toHaveBeenCalledWith(TOKEN);
   });
 
-  it('says it needs signal when the network is down', async () => {
-    account.signIn.mockRejectedValue(new TypeError('Failed to fetch'));
+  it('opens a bare token', async () => {
     render(<WelcomeScreen />);
-    await signInAs();
-    expect(await screen.findByRole('alert')).toHaveTextContent('Needs signal once to sign in.');
+    await paste(TOKEN);
+    expect(account.enterWithLink).toHaveBeenCalledWith(TOKEN);
   });
 
-  it('passes other sign-in errors through', async () => {
-    account.signIn.mockRejectedValue(new Error('Invalid login credentials'));
+  it('says what it wants when the paste holds no link, and sends nothing', async () => {
     render(<WelcomeScreen />);
-    await signInAs();
-    expect(await screen.findByRole('alert')).toHaveTextContent('Invalid login credentials');
+    await paste('hello there');
+    expect(await screen.findByRole('alert')).toHaveTextContent("That doesn't look like an Imprint link. Paste the whole link, or just its 32 letters and numbers.");
+    expect(account.enterWithLink).not.toHaveBeenCalled();
   });
 
-  it('sign up asks for a name and carries it into the unit step', async () => {
-    account.signUp.mockResolvedValue(undefined);
-    account.hasSession.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    account.createUnit.mockResolvedValue(member);
+  it('says so when the link does not work', async () => {
+    vi.mocked(account.enterWithLink).mockRejectedValue(new Error('invalid link'));
     render(<WelcomeScreen />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Sign up' }));
-    await userEvent.type(screen.getByLabelText('Your name'), 'Tess');
-    await signInAs();
-    expect(account.signUp).toHaveBeenCalledWith('tess@example.test', 'secret-pw');
-    expect(await screen.findByLabelText('Your name')).toHaveValue('Tess');
-    await userEvent.type(screen.getByLabelText('Unit name'), 'North K9');
-    await userEvent.click(screen.getByRole('button', { name: 'Create unit' }));
-    expect(account.createUnit).toHaveBeenCalledWith('North K9', 'Tess');
+    await paste(TOKEN);
+    expect(await screen.findByRole('alert')).toHaveTextContent("That link doesn't work any more. Ask your trainer for the new one.");
   });
 
-  it('tells the person to confirm their email when sign up gives no session', async () => {
-    account.signUp.mockResolvedValue(undefined);
-    account.hasSession.mockResolvedValue(false);
+  it('says it needs signal when the network is down, and keeps what was pasted so Open can be pressed again', async () => {
+    vi.mocked(account.enterWithLink).mockRejectedValueOnce(new TypeError('Failed to fetch'));
     render(<WelcomeScreen />);
-    await userEvent.click(await screen.findByRole('button', { name: 'Sign up' }));
-    await userEvent.type(screen.getByLabelText('Your name'), 'Tess');
-    await signInAs();
-    expect(await screen.findByRole('status')).toHaveTextContent('Check your email');
-    expect(screen.getByRole('button', { name: 'Sign in', pressed: true })).toBeInTheDocument();
+    await paste(TOKEN);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Needs signal to open the link.');
+    expect(screen.getByLabelText('Your link')).toHaveValue(TOKEN);
+    await userEvent.click(screen.getByRole('button', { name: 'Open' }));
+    expect(account.enterWithLink).toHaveBeenCalledTimes(2);
   });
 
-  it('resumes at the unit step when a session already exists', async () => {
-    account.hasSession.mockResolvedValue(true);
+  it('a dead link is cleared from the field and is not repeated in any message', async () => {
+    vi.mocked(account.enterWithLink).mockRejectedValue(new Error('invalid link'));
     render(<WelcomeScreen />);
-    expect(await screen.findByRole('heading', { name: 'Join or start a unit' })).toBeInTheDocument();
-  });
-
-  describe('unit step', () => {
-    async function openJoin() {
-      account.hasSession.mockResolvedValue(true);
-      render(<WelcomeScreen />);
-      await userEvent.click(await screen.findByRole('button', { name: 'Join with a code' }));
-    }
-    async function fillJoin(code: string) {
-      await userEvent.type(screen.getByLabelText('Invite code'), code);
-      await userEvent.type(screen.getByLabelText('Your name'), 'Paul');
-      await userEvent.click(screen.getByRole('button', { name: 'Join unit' }));
-    }
-
-    it('joins with a code and a name', async () => {
-      account.joinUnit.mockResolvedValue(member);
-      await openJoin();
-      await fillJoin('ab3k9z');
-      expect(account.joinUnit).toHaveBeenCalledWith('ab3k9z', 'Paul');
-    });
-
-    it('explains a wrong code', async () => {
-      account.joinUnit.mockRejectedValue(new Error('invalid invite code'));
-      await openJoin();
-      await fillJoin('ZZZZZZ');
-      expect(await screen.findByRole('alert')).toHaveTextContent(
-        "That code doesn't match a unit. Ask your trainer for the current code.",
-      );
-    });
-
-    it('explains an account that already has a unit', async () => {
-      account.joinUnit.mockRejectedValue(new Error('already in a unit'));
-      await openJoin();
-      await fillJoin('AB3K9Z');
-      expect(await screen.findByRole('alert')).toHaveTextContent('This account already belongs to a unit.');
-    });
+    await paste(TOKEN);
+    await screen.findByRole('alert');
+    expect(document.body.textContent).not.toContain(TOKEN);
+    expect(screen.getByLabelText('Your link')).toHaveValue('');
   });
 });

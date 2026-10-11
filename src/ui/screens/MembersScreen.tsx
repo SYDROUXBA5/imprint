@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { loadMe, regenerateInviteCode, removeMember, setRole } from '../../data/account';
+import { getLinks, regenerateLink, removeMember, type Links } from '../../data/account';
 import { db } from '../../data/db';
+import { buildLink } from '../../domain/link';
 import { exportAllSessionsCsv } from '../../export/run';
 import type { Member, Role } from '../../domain/types';
 import { useMe } from '../../hooks/useMe';
@@ -10,8 +11,9 @@ import { useUnitData } from '../../hooks/useUnitData';
 import { ExportButton } from '../components/ExportButton';
 import { HeaderBar } from '../components/HeaderBar';
 import { Sheet } from '../components/Sheet';
+import { friendlyLinkError } from '../linkErrors';
 
-type Confirm = { kind: 'code' } | { kind: 'remove'; member: Member } | null;
+type Confirm = { kind: 'link'; role: Role } | { kind: 'remove'; member: Member } | null;
 
 /** "a unit needs at least one trainer" -> "A unit needs at least one trainer." */
 function sentence(e: unknown): string {
@@ -23,117 +25,174 @@ function sentence(e: unknown): string {
 
 const byName = (a: Member, b: Member) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
 
-/** The unit's people (formerly "Team"). Trainer-only (the route sends handlers home). Every change goes to the server, so it needs signal. */
+const CARDS: { role: Role; title: string; about: string }[] = [
+  { role: 'trainer', title: 'Trainer link', about: 'Full control. Share only with trainers.' },
+  { role: 'handler', title: 'Handler link', about: 'Handlers choose a dog and add time.' },
+];
+
+const boxed = { padding: 12, border: '1.5px solid var(--ink)', borderRadius: 'var(--radius)', background: 'var(--paper)' } as const;
+
+/** The address people open: this app's own address, with the role and token after the #. */
+const addressOf = (role: Role, token: string) => buildLink(role, token, window.location.origin, import.meta.env.BASE_URL);
+
+/**
+ * The unit's people and the two secret links (spec §14). Trainer-only (the route sends handlers home).
+ * The links are fetched when the screen opens and shown here; they are never stored on the phone.
+ * Every change goes to the server, so it needs signal.
+ */
 export function MembersScreen() {
   const me = useMe();
-  const { members, unit, loading } = useUnitData();
+  const { members, loading } = useUnitData();
   const online = useOnline();
   const navigate = useNavigate();
+  const [links, setLinks] = useState<Links | null>(null);
+  const [linksError, setLinksError] = useState('');
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [copied, setCopied] = useState<Role | null>(null);
+  const [copyError, setCopyError] = useState('');
+  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
+
+  const loadLinks = useCallback(async () => {
+    setLinksError('');
+    try {
+      setLinks(await getLinks());
+    } catch (e) {
+      setLinksError(friendlyLinkError(e, 'Needs signal to show the links.'));
+    }
+  }, []);
+  useEffect(() => { void loadLinks(); }, [loadLinks]);
 
   if (loading || !me) return null;
-  const active = members.filter((m) => !m.removed_at).sort(byName);
+  const active = members.filter((m) => !m.removed_at);
+  const trainers = active.filter((m) => m.role === 'trainer').sort(byName);
+  const handlers = active.filter((m) => m.role === 'handler').sort(byName);
   const removed = members.filter((m) => m.removed_at).sort(byName);
   const locked = !online || busy;
 
-  /** Run a server change; then refresh who I am (my own role may have changed) and let the sync loop catch up. */
+  async function copy(role: Role) {
+    if (!links) return;
+    setCopyError('');
+    setCopied(null);
+    try {
+      await navigator.clipboard.writeText(addressOf(role, links[role]));
+      setCopied(role);
+    } catch {
+      setCopyError('Could not copy. Press and hold the link to copy it.');
+    }
+  }
+
+  async function share(role: Role) {
+    if (!links) return;
+    try {
+      await navigator.share({ title: 'Imprint', text: `Imprint ${role} link`, url: addressOf(role, links[role]) });
+    } catch { /* closing the share sheet is not an error */ }
+  }
+
+  /** Run a server change. */
   async function run(change: () => Promise<void>): Promise<boolean> {
     setBusy(true);
     setError('');
     try {
       await change();
+      return true;
     } catch (e) {
       setError(sentence(e));
-      setBusy(false);
       return false;
+    } finally {
+      setBusy(false);
     }
-    try { await loadMe(); } catch { /* the sync loop refreshes it */ }
-    setBusy(false);
-    return true;
   }
-
-  const changeRole = (m: Member, role: Role) => run(async () => {
-    await setRole(m.id, role);
-    await db.members.update(m.id, { role }); // show it at once; the next sync confirms it
-  });
 
   async function confirmed() {
     if (!confirm) return;
-    const ok = confirm.kind === 'code'
+    const ok = confirm.kind === 'link'
       ? await run(async () => {
-        const code = await regenerateInviteCode();
-        if (unit) await db.units.update(unit.id, { invite_code: code });
+        const token = await regenerateLink(confirm.role);
+        setLinks((prev) => (prev ? { ...prev, [confirm.role]: token } : prev));
+        setCopied(null);
       })
-      : await run(async () => {
-        await removeMember(confirm.member.id);
-        await db.members.update(confirm.member.id, { removed_at: new Date().toISOString() });
-      });
+      : await run(() => removeMember(confirm.member.id));
     if (ok) setConfirm(null);
   }
 
   const closeConfirm = () => { setConfirm(null); setError(''); };
 
+  const people = (title: string, list: Member[]) => (
+    <section aria-label={title} style={{ marginTop: 20 }}>
+      <h2 style={{ fontSize: 22 }}>{title}</h2>
+      {list.length === 0 && <p className="muted" style={{ margin: '8px 0 0' }}>Nobody yet.</p>}
+      <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, display: 'grid', gap: 12 }}>
+        {list.map((m) => (
+          <li key={m.id} style={boxed}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 20, fontWeight: 800, overflowWrap: 'anywhere' }}>{m.name}</span>
+              {m.id === me.id ? (
+                <span className="muted" style={{ fontWeight: 700 }}>you</span>
+              ) : (
+                <button type="button" className="btn" style={{ marginLeft: 'auto', fontSize: 16 }} disabled={locked}
+                  aria-label={`Remove ${m.name}`}
+                  onClick={() => { setError(''); setConfirm({ kind: 'remove', member: m }); }}>
+                  Remove
+                </button>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+
   return (
     <div className="screen">
       <HeaderBar title="Members" onBack={() => navigate('/')} />
       <main className="pad">
-        <section aria-label="Invite code" style={{
-          padding: 14, textAlign: 'center', border: '1.5px solid var(--ink)', borderRadius: 'var(--radius)', background: 'var(--paper)',
-        }}>
-          <p style={{ margin: 0, fontWeight: 800 }}>Invite code</p>
-          <p data-testid="invite-code" className="num" style={{
-            margin: '4px 0', fontSize: 44, lineHeight: 1.1, fontWeight: 800, letterSpacing: '10px', paddingLeft: 10,
-            overflowWrap: 'anywhere',
-          }}>
-            {unit?.invite_code ?? '······'}
-          </p>
-          <p className="muted" style={{ margin: '0 0 12px' }}>Give this to handlers so they can join.</p>
-          <button type="button" className="btn" disabled={locked}
-            onClick={() => { setError(''); setConfirm({ kind: 'code' }); }}>
-            New code
-          </button>
-        </section>
-
         {!online && (
-          <p role="status" style={{ margin: '12px 0 0', fontWeight: 800 }}>Member changes need signal.</p>
+          <p role="status" style={{ margin: '0 0 12px', fontWeight: 800 }}>Member changes need signal.</p>
         )}
+        {linksError && (
+          <div>
+            <p role="alert" className="error">{linksError}</p>
+            <button type="button" className="btn" style={{ width: '100%', marginTop: 8 }} onClick={() => void loadLinks()}>
+              Try again
+            </button>
+          </div>
+        )}
+        {copyError && <p role="alert" className="error">{copyError}</p>}
+        {copied && <p role="status" style={{ margin: '0 0 8px', fontWeight: 800 }}>Copied</p>}
+
+        {links && (
+          <div style={{ display: 'grid', gap: 16 }}>
+            {CARDS.map((c) => (
+              <section key={c.role} aria-label={c.title} style={{ ...boxed, padding: 14 }}>
+                <h2 style={{ fontSize: 22 }}>{c.title}</h2>
+                <p className="muted" style={{ margin: '2px 0 8px' }}>{c.about}</p>
+                <p data-testid={`${c.role}-link`} style={{
+                  margin: '0 0 12px', padding: '8px 10px', border: '1.5px dashed var(--ink)', borderRadius: 10,
+                  fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 13, lineHeight: 1.4, overflowWrap: 'anywhere', userSelect: 'all',
+                }}>
+                  {addressOf(c.role, links[c.role])}
+                </p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button type="button" className="btn" style={{ flex: 1, fontSize: 16 }} onClick={() => void copy(c.role)}>Copy</button>
+                  {canShare && (
+                    <button type="button" className="btn" style={{ flex: 1, fontSize: 16 }} onClick={() => void share(c.role)}>Share</button>
+                  )}
+                  <button type="button" className="btn" style={{ flex: 1, fontSize: 16 }} disabled={locked}
+                    onClick={() => { setError(''); setConfirm({ kind: 'link', role: c.role }); }}>
+                    New link
+                  </button>
+                </div>
+              </section>
+            ))}
+          </div>
+        )}
+
         {error && !confirm && <p role="alert" className="error">{error}</p>}
 
-        <section aria-label="Members" style={{ marginTop: 20 }}>
-          <h2 style={{ fontSize: 22 }}>Active</h2>
-          <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, display: 'grid', gap: 12 }}>
-            {active.map((m) => (
-              <li key={m.id} style={{
-                padding: 12, border: '1.5px solid var(--ink)', borderRadius: 'var(--radius)', background: 'var(--paper)',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 20, fontWeight: 800, overflowWrap: 'anywhere' }}>{m.name}</span>
-                  {m.id === me.id && <span className="muted" style={{ fontWeight: 700 }}>you</span>}
-                  <span style={{
-                    marginLeft: 'auto', padding: '2px 10px', border: '1.5px solid var(--ink)', borderRadius: 999,
-                    fontSize: 14, fontWeight: 800, background: m.role === 'trainer' ? 'var(--mustard)' : 'var(--paper)',
-                  }}>
-                    {m.role === 'trainer' ? 'Trainer' : 'Handler'}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                  <button type="button" className="btn" style={{ flex: 1, fontSize: 16 }} disabled={locked}
-                    aria-label={m.role === 'trainer' ? `Make ${m.name} a handler` : `Make ${m.name} a trainer`}
-                    onClick={() => changeRole(m, m.role === 'trainer' ? 'handler' : 'trainer')}>
-                    {m.role === 'trainer' ? 'Make handler' : 'Make trainer'}
-                  </button>
-                  <button type="button" className="btn" style={{ flex: 1, fontSize: 16 }} disabled={locked}
-                    aria-label={`Remove ${m.name}`}
-                    onClick={() => { setError(''); setConfirm({ kind: 'remove', member: m }); }}>
-                    Remove
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        </section>
+        {people('Trainers', trainers)}
+        {people('Handlers', handlers)}
 
         <section aria-label="Export" style={{ marginTop: 24 }}>
           <h2 style={{ fontSize: 22, marginBottom: 8 }}>Export</h2>
@@ -159,18 +218,22 @@ export function MembersScreen() {
       </main>
 
       {confirm && (
-        <Sheet open onClose={closeConfirm} title={confirm.kind === 'code' ? 'New invite code' : 'Remove member'}>
+        <Sheet open onClose={closeConfirm}
+          title={confirm.kind === 'link' ? (confirm.role === 'trainer' ? 'New trainer link' : 'New handler link') : 'Remove member'}>
           <p style={{ fontSize: 18 }}>
-            {confirm.kind === 'code'
-              ? 'The old code will stop working.'
+            {confirm.kind === 'link'
+              ? 'Everyone using the old link will need the new one.'
               : `Remove ${confirm.member.name}? Their past sessions stay in the log.`}
           </p>
+          {confirm.kind === 'remove' && (
+            <p className="muted" style={{ fontSize: 16 }}>To really cut someone off, also make a new link.</p>
+          )}
           {!online && <p className="error">Member changes need signal.</p>}
           {error && <p role="alert" className="error">{error}</p>}
           <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
             <button type="button" className="btn" style={{ flex: 1 }} onClick={closeConfirm}>Cancel</button>
             <button type="button" className="btn btn-primary" style={{ flex: 1 }} disabled={locked} onClick={confirmed}>
-              {confirm.kind === 'code' ? 'Make new code' : `Remove ${confirm.member.name}`}
+              {confirm.kind === 'link' ? 'Make new link' : `Remove ${confirm.member.name}`}
             </button>
           </div>
         </Sheet>

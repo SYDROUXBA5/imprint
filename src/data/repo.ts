@@ -1,12 +1,12 @@
 import { isBreedId, isPurpose } from '../domain/breeds';
 import { localDate } from '../domain/format';
 import { isRunning } from '../domain/totals';
-import type { BreedId, Correction, Dog, Member, Purpose, Session } from '../domain/types';
+import type { BreedId, Correction, Dog, Me, Purpose, Session } from '../domain/types';
 import type { ImprintDB, OutboxItem, SyncedTable } from './db';
 
 export interface Ctx {
   db: ImprintDB;
-  me: Member;
+  me: Me;
   now?: () => Date;
   uuid?: () => string;
 }

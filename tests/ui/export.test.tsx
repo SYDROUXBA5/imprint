@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { dogRow, seedCatalogue } from '../fixtures';
+import { dogRow, meRecord, seedCatalogue } from '../fixtures';
 import type { Correction, Dog, Member, Session } from '../../src/domain/types';
 
 vi.mock('../../src/data/account');
@@ -32,7 +32,7 @@ const correction: Correction = {
 };
 
 async function seed(me: Member) {
-  await db.meta.put({ key: ME_KEY, value: me });
+  await db.meta.put({ key: ME_KEY, value: meRecord(me) });
   await db.units.put({ id: 'u1', name: 'Border K9', invite_code: 'K7M2QX', created_at: '2026-10-01T00:00:00Z' });
   await db.members.bulkPut([tess, paul]);
   await seedCatalogue(db);

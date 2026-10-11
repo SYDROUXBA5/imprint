@@ -4,14 +4,14 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, ME_KEY } from '../../src/data/db';
 import type { Member } from '../../src/domain/types';
-import { seedCatalogue } from '../fixtures';
+import { meRecord, seedCatalogue } from '../fixtures';
 import { OdoursScreen } from '../../src/ui/screens/OdoursScreen';
 
 const trainer: Member = { id: 'mT', unit_id: 'u1', user_id: 'uT', name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
 const GONE = '2026-10-02T00:00:00Z';
 
 async function seed() {
-  await db.meta.put({ key: ME_KEY, value: trainer });
+  await db.meta.put({ key: ME_KEY, value: meRecord(trainer) });
   await seedCatalogue(db);
 }
 function Where() {

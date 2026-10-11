@@ -1,6 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import type {
-  Correction, Dog, Member, Odour, OdourCategory, Session, Team, TeamOdour, Unit,
+  Correction, Dog, Member, Odour, OdourCategory, Role, Session, Team, TeamOdour, Unit,
 } from '../domain/types';
 
 export type SyncedTable =
@@ -18,8 +18,15 @@ export interface OutboxItem {
 
 export interface MetaRow { key: string; value: unknown }
 
-/** Meta key holding the signed-in member, so the app works offline. */
+/**
+ * Meta key holding who this phone is, so the app opens offline: the unit, the scope of the link it entered
+ * by (which is its power), and the name it picked (null until it has). Never the link's token.
+ */
 export const ME_KEY = 'me';
+export interface MeRecord { unit_id: string; scope: Role; member_id: string | null }
+
+/** Meta key set to 'lost' when the server stops letting this phone in (its link changed, or its name was removed). */
+export const ACCESS_KEY = 'access';
 
 export class ImprintDB extends Dexie {
   units!: Table<Unit, string>;

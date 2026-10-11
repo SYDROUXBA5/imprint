@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, ME_KEY } from '../../src/data/db';
 import type { Correction, Dog, Member, Session } from '../../src/domain/types';
-import { dogRow, pick, seedCatalogue } from '../fixtures';
+import { dogRow, meRecord, pick, seedCatalogue } from '../fixtures';
 import { LogScreen } from '../../src/ui/screens/LogScreen';
 
 const tess: Member = { id: 'mT', unit_id: 'u1', user_id: 'uT', name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
@@ -45,7 +45,7 @@ const CORRECTIONS: Correction[] = [
 ];
 
 async function seed(me: Member, sessions = SESSIONS, corrections = CORRECTIONS) {
-  await db.meta.put({ key: ME_KEY, value: me });
+  await db.meta.put({ key: ME_KEY, value: meRecord(me) });
   await db.members.bulkPut([tess, hana, paul]);
   await seedCatalogue(db);
   await db.dogs.bulkPut([rex, bella]);

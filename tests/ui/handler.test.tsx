@@ -5,7 +5,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { dogRow, seedCatalogue, team } from '../fixtures';
+import { dogRow, meRecord, seedCatalogue, team } from '../fixtures';
 import type { Member, Session } from '../../src/domain/types';
 
 vi.mock('../../src/data/supabase', () => ({ supabase: { rpc: vi.fn() } }));
@@ -22,7 +22,7 @@ const manual = (id: string, dogId: string, odour: string, minutes: number): Sess
 
 /** Alpha: Rex. Retired (archived team): Scout. Archived dog Old Max in Alpha. */
 async function seed(me: Member) {
-  await db.meta.put({ key: ME_KEY, value: me });
+  await db.meta.put({ key: ME_KEY, value: meRecord(me) });
   await db.members.bulkPut([tess, paul]);
   await db.units.put({ id: 'u1', name: 'Border K9', invite_code: 'K7M2QX', created_at: '2026-10-01T00:00:00Z' });
   await seedCatalogue(db);
@@ -36,7 +36,7 @@ async function seed(me: Member) {
 }
 /** Sign in as `me` (the screens read who I am from the local store) and open the app at `at`. */
 async function renderAt(me: Member, at: string) {
-  await db.meta.put({ key: ME_KEY, value: me });
+  await db.meta.put({ key: ME_KEY, value: meRecord(me) });
   return render(<MemoryRouter initialEntries={[at]}><AppRoutes me={me} /></MemoryRouter>);
 }
 const homeHeading = () => screen.findByRole('heading', { level: 1, name: 'Teams' });

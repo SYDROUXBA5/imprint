@@ -1,13 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ImprintDB, ME_KEY } from '../../src/data/db';
-import { demoRole } from '../../src/dev/demoMode';
-import { DEMO_INVITE_CODE, DEMO_UNIT_NAME, seedDemo } from '../../src/dev/demoSeed';
+import { demoMode } from '../../src/dev/demoMode';
+import { DEMO_UNIT_NAME, seedDemo } from '../../src/dev/demoSeed';
 import { needsClockCheck, overlappingSessionIds } from '../../src/domain/flags';
-import { isValidInviteCode } from '../../src/domain/inviteCode';
 import { IMPRINT_TARGET_S, isImprinted, isRunning, latestCorrection, odourTotal } from '../../src/domain/totals';
 import { isBreedId, isPurpose } from '../../src/domain/breeds';
 import { DEFAULT_CATALOGUE, isInTeamList } from '../../src/domain/odours';
-import type { Member } from '../../src/domain/types';
 import { dogRow, team } from '../fixtures';
 
 const NOW = new Date(2026, 9, 9, 12, 0, 0);
@@ -35,8 +33,7 @@ describe('demo seed', () => {
     const { dogs, members } = await load();
     const unit = await db.units.toCollection().first();
     expect(unit?.name).toBe(DEMO_UNIT_NAME);
-    expect(isValidInviteCode(DEMO_INVITE_CODE)).toBe(true);
-    expect(unit?.invite_code).toBe(DEMO_INVITE_CODE);
+    expect(unit).not.toHaveProperty('invite_code');
     expect(members.filter((m) => m.role === 'trainer')).toHaveLength(2);
     expect(members.filter((m) => m.role === 'handler')).toHaveLength(3);
     expect(dogs.filter((d) => d.archived_at === null)).toHaveLength(5);
@@ -98,10 +95,10 @@ describe('demo seed', () => {
   it('signs in as the trainer or the handler that was asked for', async () => {
     const trainer = await seedDemo('trainer', { db, now: NOW });
     expect(trainer.role).toBe('trainer');
-    expect(((await db.meta.get(ME_KEY))?.value as Member).id).toBe(trainer.id);
+    expect((await db.meta.get(ME_KEY))?.value).toEqual({ unit_id: 'demo-unit', scope: 'trainer', member_id: trainer.id });
     const handler = await seedDemo('handler', { db, now: NOW });
     expect(handler.role).toBe('handler');
-    expect(((await db.meta.get(ME_KEY))?.value as Member).id).toBe(handler.id);
+    expect((await db.meta.get(ME_KEY))?.value).toEqual({ unit_id: 'demo-unit', scope: 'handler', member_id: handler.id });
     expect(await db.members.count()).toBe(5);
   });
 
@@ -175,17 +172,19 @@ describe('demo seed', () => {
   });
 });
 
-describe('demoRole', () => {
+describe('demoMode', () => {
   afterEach(() => window.history.replaceState(null, '', '/'));
 
   it('reads ?demo= from the query before the hash, and ignores anything else', () => {
     window.history.replaceState(null, '', '/?demo=trainer#/');
-    expect(demoRole()).toBe('trainer');
+    expect(demoMode()).toBe('trainer');
     window.history.replaceState(null, '', '/?demo=handler#/dog/x');
-    expect(demoRole()).toBe('handler');
+    expect(demoMode()).toBe('handler');
+    window.history.replaceState(null, '', '/?demo=who#/');
+    expect(demoMode()).toBe('who');
     window.history.replaceState(null, '', '/?demo=admin#/');
-    expect(demoRole()).toBeNull();
+    expect(demoMode()).toBeNull();
     window.history.replaceState(null, '', '/#/?demo=trainer');
-    expect(demoRole()).toBeNull();
+    expect(demoMode()).toBeNull();
   });
 });

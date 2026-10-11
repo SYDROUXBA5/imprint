@@ -14,6 +14,12 @@ export interface RemoteStore {
   update(table: string, id: string, patch: Record<string, unknown>): Promise<{ error?: RemoteError }>;
   changesSince(table: PulledTable, unitId: string, sinceIso: string):
     Promise<{ rows: Record<string, unknown>[]; error?: RemoteError }>;
+  /**
+   * Does the server still let this phone into the unit? Row Level Security answers: a phone whose link was
+   * replaced, or whose name was removed, reads no rows at all, so asking for the unit's own row tells.
+   * false = no; undefined = could not tell (no signal), which is never treated as "no".
+   */
+  hasAccess(unitId: string): Promise<boolean | undefined>;
 }
 
 const err = (e: { code?: string; message: string } | null) =>
@@ -30,6 +36,10 @@ export const supabaseRemote = (client: SupabaseClient): RemoteStore => ({
   async update(table, id, patch) {
     const { error } = await client.from(table).update(patch).eq('id', id);
     return err(error);
+  },
+  async hasAccess(unitId) {
+    const { data, error } = await client.from('units').select('id').eq('id', unitId).maybeSingle();
+    return error ? undefined : !!data;
   },
   async changesSince(table, unitId, sinceIso) {
     const q = client.from(table).select('*').gt('updated_at', sinceIso).order('updated_at');

@@ -1,6 +1,6 @@
 import type { ImprintDB } from '../data/db';
 import { localDate } from '../domain/format';
-import type { Member } from '../domain/types';
+import type { Me } from '../domain/types';
 import { sessionsCsv } from './csv';
 import { dogReportPdf, teamReportPdf } from './pdf';
 import { reportOdours } from './reportOdours';
@@ -52,7 +52,7 @@ export async function exportTeamCsv(db: ImprintDB, teamId: string, now: Date = n
 }
 
 /** One page per active dog of the team (the PDF library loads only now). */
-export async function exportTeamReport(db: ImprintDB, me: Member, teamId: string, now: Date = new Date()): Promise<ExportDone> {
+export async function exportTeamReport(db: ImprintDB, me: Me, teamId: string, now: Date = new Date()): Promise<ExportDone> {
   const { team, dogs, sessions, corrections } = await teamData(db, teamId);
   const [categories, odours, teamOdours] = await Promise.all([db.odour_categories.toArray(), db.odours.toArray(), db.team_odours.toArray()]);
   const blob = await teamReportPdf({
@@ -65,7 +65,7 @@ export async function exportTeamReport(db: ImprintDB, me: Member, teamId: string
 }
 
 /** One dog's progress report (the PDF library loads only now). */
-export async function exportDogReport(db: ImprintDB, me: Member, dogId: string, now: Date = new Date()): Promise<ExportDone> {
+export async function exportDogReport(db: ImprintDB, me: Me, dogId: string, now: Date = new Date()): Promise<ExportDone> {
   const dog = await db.dogs.get(dogId);
   if (!dog) throw new Error('Dog not found');
   const sessions = await db.sessions.where('dog_id').equals(dogId).toArray();

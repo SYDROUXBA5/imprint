@@ -1,9 +1,13 @@
 // Shared test data for the new data model (spec §13). The catalogue rows are the default catalogue with
 // readable ids ('cocaine', 'narcotics', ...), so tests can say 'mdma' and read like they did before the
 // catalogue moved into the database. Ids are plain strings in the local store; only the server needs uuids.
-import type { ImprintDB } from '../src/data/db';
+import type { ImprintDB, MeRecord } from '../src/data/db';
 import { defaultCatalogueRows, teamOdourId } from '../src/domain/odours';
-import type { Dog, Team, TeamOdour } from '../src/domain/types';
+import type { Dog, Role, Team, TeamOdour } from '../src/domain/types';
+
+/** What the app stores as "who this phone is" (spec §14): the unit, the scope of its link, and its name. */
+export const meRecord = (m: { id: string; unit_id: string; role: Role }): MeRecord =>
+  ({ unit_id: m.unit_id, scope: m.role, member_id: m.id });
 
 export const slug = (name: string): string => name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 

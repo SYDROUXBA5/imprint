@@ -7,12 +7,14 @@ import { pullChanges, pushOutbox, syncOnce, syncStatus, takeNotices } from '../.
 import type { Member } from '../../src/domain/types';
 import { seedCatalogue } from '../fixtures';
 
-const trainer: Member = { id: 'mT', unit_id: 'u1', user_id: 'uT', name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
+const trainer: Member = { id: 'mT', unit_id: 'u1', user_id: null, name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
 
-function fakeRemote(failures: (RemoteError | null)[] = []) {
+function fakeRemote(failures: (RemoteError | null)[] = [], access: (boolean | undefined)[] = []) {
   const calls: { op: string; table: string; row: Record<string, unknown> }[] = [];
   const serverRows: Record<string, Record<string, unknown>[]> = {};
   const remote: RemoteStore = {
+    // true unless the test queued an answer: false = the server no longer lets this phone in, undefined = could not tell
+    async hasAccess() { return access.length ? access.shift() : true; },
     async insert(table, row) { const f = failures.shift(); if (f) return { error: f }; calls.push({ op: 'insert', table, row }); return {}; },
     async update(table, id, patch) { const f = failures.shift(); if (f) return { error: f }; calls.push({ op: 'update', table, row: { id, ...patch } }); return {}; },
     async changesSince(table) { return { rows: serverRows[table] ?? [] }; },
@@ -66,6 +68,43 @@ describe('pushOutbox', () => {
     expect(calls).toHaveLength(1);
     const status = await syncStatus(db);
     expect(status).toMatchObject({ pending: 0, rejected: 1 });
+  });
+});
+
+describe('losing access', () => {
+  it('syncOnce asks first: with no access nothing is pushed or pulled, and the unsent work stays pending', async () => {
+    await addDog(ctx(), 'Rex', 't1', 'labrador', 'single');
+    const { remote, calls } = fakeRemote([], [false]);
+    const res = await syncOnce({ db, remote, unitId: 'u1', now });
+    expect(res.lostAccess).toBe(true);
+    expect(calls).toHaveLength(0);
+    expect((await syncStatus(db)).pending).toBe(1);
+    expect((await syncStatus(db)).rejected).toBe(0);
+  });
+
+  it('a refusal that comes from losing access mid-cycle is not a rejection: the work stays pending for the new link', async () => {
+    await addDog(ctx(), 'Rex', 't1', 'labrador', 'single');
+    const { remote } = fakeRemote([{ code: '42501', message: 'new row violates row-level security policy' }], [true, false]);
+    const res = await syncOnce({ db, remote, unitId: 'u1', now });
+    expect(res.lostAccess).toBe(true);
+    expect(await db.outbox.where('status').equals('pending').count()).toBe(1);
+    expect(await db.outbox.where('status').equals('rejected').count()).toBe(0);
+  });
+
+  it('a refusal while the phone still has access is a real rejection, as before', async () => {
+    await addDog(ctx(), 'Rex', 't1', 'labrador', 'single');
+    const { remote } = fakeRemote([{ code: '42501', message: 'new row violates row-level security policy' }], [true, true]);
+    const res = await syncOnce({ db, remote, unitId: 'u1', now });
+    expect(res.lostAccess).toBeUndefined();
+    expect(res.rejected).toBe(1);
+  });
+
+  it('not being able to tell (no signal) is not losing access', async () => {
+    await addDog(ctx(), 'Rex', 't1', 'labrador', 'single');
+    const { remote, calls } = fakeRemote([], [undefined]);
+    const res = await syncOnce({ db, remote, unitId: 'u1', now });
+    expect(res.lostAccess).toBeUndefined();
+    expect(calls).toHaveLength(1);
   });
 });
 

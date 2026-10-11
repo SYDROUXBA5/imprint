@@ -20,6 +20,7 @@ function fakeClient() {
 
 let db: ImprintDB;
 let changesSince: ReturnType<typeof vi.fn>;
+let hasAccess: ReturnType<typeof vi.fn>;
 let remote: RemoteStore;
 let online = true;
 
@@ -28,7 +29,8 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
   db = new ImprintDB(`loop-${Math.random()}`);
   changesSince = vi.fn(async () => ({ rows: [] }));
-  remote = { insert: vi.fn(async () => ({})), update: vi.fn(async () => ({})), changesSince } as unknown as RemoteStore;
+  hasAccess = vi.fn(async () => true);
+  remote = { insert: vi.fn(async () => ({})), update: vi.fn(async () => ({})), changesSince, hasAccess } as unknown as RemoteStore;
   online = true;
   vi.spyOn(navigator, 'onLine', 'get').mockImplementation(() => online);
 });
@@ -120,5 +122,34 @@ describe('startSyncLoop', () => {
     await flush();
     expect(changesSince).not.toHaveBeenCalled();
     expect(f.raw.removeChannel).toHaveBeenCalledWith(f.channel);
+  });
+
+  describe('when the server stops letting this phone in', () => {
+    it('stops everything, keeps the unsent work, and tells the app once', async () => {
+      await db.outbox.add({ table: 'dogs', op: 'insert', row: { id: 'd1' }, created_at: '2026-10-03T10:00:00Z', status: 'pending' });
+      hasAccess.mockResolvedValue(false);
+      const onLostAccess = vi.fn();
+      const f = fakeClient();
+      startSyncLoop({ ...deps(), onLostAccess }, f.client, 30_000);
+      await vi.waitFor(() => expect(onLostAccess).toHaveBeenCalledTimes(1));
+      expect(changesSince).not.toHaveBeenCalled();
+      expect((remote.insert as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+      expect(f.raw.removeChannel).toHaveBeenCalledWith(f.channel);
+      vi.advanceTimersByTime(120_000);
+      window.dispatchEvent(new Event('online'));
+      await flush();
+      expect(hasAccess).toHaveBeenCalledTimes(1); // no further attempts
+      expect(onLostAccess).toHaveBeenCalledTimes(1);
+      expect(await db.outbox.where('status').equals('pending').count()).toBe(1);
+    });
+
+    it('does not stop for a failed check (no signal)', async () => {
+      hasAccess.mockResolvedValueOnce(undefined);
+      const onLostAccess = vi.fn();
+      const stop = startSyncLoop({ ...deps(), onLostAccess }, fakeClient().client, 30_000);
+      await cycles(1);
+      expect(onLostAccess).not.toHaveBeenCalled();
+      stop();
+    });
   });
 });

@@ -4,11 +4,11 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { db, ME_KEY } from '../../src/data/db';
 import type { Member, Session } from '../../src/domain/types';
-import { dogRow, seedCatalogue, team } from '../fixtures';
+import { dogRow, meRecord, seedCatalogue, team } from '../fixtures';
 import { TeamsScreen } from '../../src/ui/screens/TeamsScreen';
 
-const trainer: Member = { id: 'mT', unit_id: 'u1', user_id: 'uT', name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
-const handler: Member = { id: 'mH', unit_id: 'u1', user_id: 'uH', name: 'Paul', role: 'handler', joined_at: '', removed_at: null };
+const trainer: Member = { id: 'mT', unit_id: 'u1', user_id: null, name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
+const handler: Member = { id: 'mH', unit_id: 'u1', user_id: null, name: 'Paul', role: 'handler', joined_at: '', removed_at: null };
 const running = (id: string, dogId: string, odour: string): Session => ({
   id, unit_id: 'u1', dog_id: dogId, odour_id: odour, handler_id: 'mH', kind: 'timed', session_date: '2026-10-05',
   started_at: new Date(Date.now() - 724_000).toISOString(), ended_at: null, duration_s: null,
@@ -17,7 +17,7 @@ const running = (id: string, dogId: string, odour: string): Session => ({
 
 /** Alpha: Rex, Bella (and an archived Old Max). Bravo: Fly. Retired (archived team): Hidden. */
 async function seed(me: Member) {
-  await db.meta.put({ key: ME_KEY, value: me });
+  await db.meta.put({ key: ME_KEY, value: meRecord(me) });
   await db.members.bulkPut([trainer, handler]);
   await seedCatalogue(db, ['t1', 't2']);
   await db.teams.update('t2', { name: 'Bravo' });
@@ -116,7 +116,7 @@ describe('TeamsScreen (home)', () => {
   });
 
   it('has the field-guide heading, and an empty state that points a trainer to the first team', async () => {
-    await db.meta.put({ key: ME_KEY, value: trainer });
+    await db.meta.put({ key: ME_KEY, value: meRecord(trainer) });
     renderHome();
     expect(await screen.findByText('No teams yet')).toBeInTheDocument();
     expect(screen.getByText('Create your first team')).toBeInTheDocument();
@@ -130,13 +130,14 @@ describe('TeamsScreen (home)', () => {
     expect(screen.getAllByRole('listitem')).toHaveLength(2);
     expect(screen.queryByRole('link')).toBeNull();
     expect(screen.queryByRole('button', { name: /new team/i })).toBeNull();
+    // the team cards, and the control that says who is using the phone
     expect(screen.getAllByRole('button').map((b) => b.textContent)).toEqual([
-      expect.stringContaining('Alpha'), expect.stringContaining('Bravo'),
+      'Paul · Switch', expect.stringContaining('Alpha'), expect.stringContaining('Bravo'),
     ]);
   });
 
   it('has an empty state for a handler too', async () => {
-    await db.meta.put({ key: ME_KEY, value: handler });
+    await db.meta.put({ key: ME_KEY, value: meRecord(handler) });
     renderHome();
     expect(await screen.findByText('No teams yet')).toBeInTheDocument();
     expect(screen.queryByText('Create your first team')).toBeNull();
@@ -238,7 +239,7 @@ describe('TeamsScreen (home)', () => {
 
     it('is the way out of the empty state for a trainer with no teams', async () => {
       await seedCatalogue(db, []);
-      await db.meta.put({ key: ME_KEY, value: trainer });
+      await db.meta.put({ key: ME_KEY, value: meRecord(trainer) });
       renderHome();
       await userEvent.click(await screen.findByRole('button', { name: '+ New team' }));
       const dialog = await sheet();
@@ -250,3 +251,51 @@ describe('TeamsScreen (home)', () => {
     });
   });
 });
+
+describe('Switch (who is using this phone)', () => {
+  const stored = async () => (await db.meta.get(ME_KEY))?.value;
+
+  it('shows the name this phone is signed in under, with a Switch control that is easy to hit', async () => {
+    await seed(handler);
+    renderHome();
+    const control = await screen.findByRole('button', { name: 'Paul · Switch' });
+    expect(parseInt(control.style.minHeight, 10)).toBeGreaterThanOrEqual(44);
+  });
+
+  it('is there for a trainer too', async () => {
+    await seed(trainer);
+    renderHome();
+    expect(await screen.findByRole('button', { name: 'Tess · Switch' })).toBeInTheDocument();
+  });
+
+  it('Switch forgets the name here, keeps the unit and the link’s scope, and leaves the data alone', async () => {
+    await seed(handler);
+    renderHome();
+    await userEvent.click(await screen.findByRole('button', { name: 'Paul · Switch' }));
+    await waitFor(async () => expect(await stored()).toEqual({ unit_id: 'u1', scope: 'handler', member_id: null }));
+    expect(await db.dogs.count()).toBe(5);
+  });
+
+  it('with work still waiting to be sent, asks first: Stay as Paul changes nothing', async () => {
+    await seed(handler);
+    await db.outbox.add({ table: 'sessions', op: 'insert', row: { id: 's9' }, created_at: '2026-10-05T10:00:00Z', status: 'pending' });
+    renderHome();
+    await userEvent.click(await screen.findByRole('button', { name: 'Paul · Switch' }));
+    const dialog = within(await screen.findByRole('dialog'));
+    expect(dialog.getByText(/Paul still has 1 unsent item on this phone/)).toBeInTheDocument();
+    await userEvent.click(dialog.getByRole('button', { name: 'Stay as Paul' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(await stored()).toEqual({ unit_id: 'u1', scope: 'handler', member_id: 'mH' });
+  });
+
+  it('... and Switch anyway switches', async () => {
+    await seed(handler);
+    await db.outbox.add({ table: 'sessions', op: 'insert', row: { id: 's9' }, created_at: '2026-10-05T10:00:00Z', status: 'pending' });
+    renderHome();
+    await userEvent.click(await screen.findByRole('button', { name: 'Paul · Switch' }));
+    await userEvent.click(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Switch anyway' }));
+    await waitFor(async () => expect(await stored()).toEqual({ unit_id: 'u1', scope: 'handler', member_id: null }));
+    expect(await db.outbox.count()).toBe(1); // still waiting, not thrown away
+  });
+});
+

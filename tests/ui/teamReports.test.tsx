@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { dogRow, seedCatalogue } from '../fixtures';
+import { dogRow, meRecord, seedCatalogue } from '../fixtures';
 import type { Correction, Member, Session } from '../../src/domain/types';
 
 vi.mock('../../src/data/account');
@@ -34,7 +34,7 @@ const correction: Correction = {
 
 /** Alpha: Rex (Malinois, dual), Bella (Labrador, single), archived Old Max. Bravo: Fly. */
 async function seed(me: Member) {
-  await db.meta.put({ key: ME_KEY, value: me });
+  await db.meta.put({ key: ME_KEY, value: meRecord(me) });
   await db.units.put({ id: 'u1', name: 'Border K9', invite_code: 'K7M2QX', created_at: '2026-10-01T00:00:00Z' });
   await db.members.bulkPut([tess, paul]);
   await seedCatalogue(db, ['t1', 't2']);
@@ -89,14 +89,14 @@ describe('Team settings: reports (spec 13.6)', () => {
     await seed(tess);
     renderTeam();
     const dialog = await openSettings();
-    expect(dialog.getByRole('button', { name: 'Team report (PDF)' })).toBeEnabled();
-    expect(dialog.getByRole('button', { name: 'Team sessions (CSV)' })).toBeEnabled();
+    expect(await dialog.findByRole('button', { name: 'Team report (PDF)' })).toBeEnabled();
+    expect(await dialog.findByRole('button', { name: 'Team sessions (CSV)' })).toBeEnabled();
   });
 
   it('builds the team PDF from the team\'s own dogs and sessions and shares it as imprint-<team>-<date>.pdf', async () => {
     await seed(tess);
     renderTeam();
-    await userEvent.click((await openSettings()).getByRole('button', { name: 'Team report (PDF)' }));
+    await userEvent.click(await (await openSettings()).findByRole('button', { name: 'Team report (PDF)' }));
     await waitFor(() => expect(shareOrDownload).toHaveBeenCalledTimes(1));
     expect(teamReportPdf).toHaveBeenCalledTimes(1);
     const arg = vi.mocked(teamReportPdf).mock.calls[0][0];
@@ -117,7 +117,7 @@ describe('Team settings: reports (spec 13.6)', () => {
   it('shares the team CSV as imprint-<team>-<date>.csv, limited to the team and with team, breed, purpose and category', async () => {
     await seed(tess);
     renderTeam();
-    await userEvent.click((await openSettings()).getByRole('button', { name: 'Team sessions (CSV)' }));
+    await userEvent.click(await (await openSettings()).findByRole('button', { name: 'Team sessions (CSV)' }));
     await waitFor(() => expect(shareOrDownload).toHaveBeenCalledTimes(1));
     const [blob, filename] = vi.mocked(shareOrDownload).mock.calls[0];
     expect(filename).toBe(`imprint-alpha-${today()}.csv`);
@@ -147,7 +147,7 @@ describe('Team settings: reports (spec 13.6)', () => {
     renderTeam();
     const dialog = await openSettings();
     vi.mocked(shareOrDownload).mockResolvedValueOnce('downloaded');
-    await userEvent.click(dialog.getByRole('button', { name: 'Team sessions (CSV)' }));
+    await userEvent.click(await dialog.findByRole('button', { name: 'Team sessions (CSV)' }));
     expect(await dialog.findByText('Saved to your downloads.')).toBeInTheDocument();
     vi.mocked(teamReportPdf).mockRejectedValueOnce(new Error('chunk failed to load'));
     await userEvent.click(dialog.getByRole('button', { name: 'Team report (PDF)' }));

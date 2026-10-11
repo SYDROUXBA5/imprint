@@ -1,6 +1,6 @@
 // Dev-only: seeds the local database so the screens can be looked at without a Supabase project.
 // Reached only through a guarded dynamic import in main.tsx; never part of a production build.
-import { db as appDb, ME_KEY, type ImprintDB } from '../data/db';
+import { db as appDb, ME_KEY, type ImprintDB, type MeRecord } from '../data/db';
 import { localDate } from '../domain/format';
 import { defaultCatalogueRows, teamOdourId } from '../domain/odours';
 import type {
@@ -8,14 +8,17 @@ import type {
 } from '../domain/types';
 
 export const DEMO_UNIT_NAME = 'Demo K9 Unit';
-export const DEMO_INVITE_CODE = 'PAWS42';
 
-interface Options { db?: ImprintDB; now?: Date }
+interface Options { db?: ImprintDB; now?: Date; memberId?: string }
 
-/** Empty the local database, fill it with the demo unit and sign in as a trainer or a handler. */
-export async function seedDemo(role: Role, { db = appDb, now = new Date() }: Options = {}): Promise<Member> {
+/**
+ * Empty the local database, fill it with the demo unit and sign in as a trainer or a handler. `memberId` picks
+ * which name; as in the real app, the role decides the power and a name of the other list is not available.
+ */
+export async function seedDemo(role: Role, { db = appDb, now = new Date(), memberId }: Options = {}): Promise<Member> {
   const data = buildDemoData(now);
-  const me = data.members.find((m) => m.id === (role === 'trainer' ? 'demo-t1' : 'demo-h1'))!;
+  const wanted = data.members.find((m) => m.id === memberId && m.role === role);
+  const me = wanted ?? data.members.find((m) => m.id === (role === 'trainer' ? 'demo-t1' : 'demo-h1'))!;
   await db.transaction('rw', db.tables, async () => {
     for (const table of db.tables) await table.clear();
     await db.units.add(data.unit);
@@ -27,7 +30,7 @@ export async function seedDemo(role: Role, { db = appDb, now = new Date() }: Opt
     await db.dogs.bulkAdd(data.dogs);
     await db.sessions.bulkAdd(data.sessions);
     await db.corrections.bulkAdd(data.corrections);
-    await db.meta.put({ key: ME_KEY, value: me });
+    await db.meta.put({ key: ME_KEY, value: { unit_id: data.unit.id, scope: role, member_id: me.id } satisfies MeRecord });
   });
   return me;
 }
@@ -38,6 +41,13 @@ export async function startDemo(role: Role): Promise<void> {
   await seedDemo(role);
   document.title = `Imprint (demo: ${role})`;
 }
+
+/** The sample names on the `?demo=who` screen: the demo unit's handlers, with a role to enter by. */
+export function demoNames(): { id: string; name: string }[] {
+  return buildDemoData(new Date()).members.filter((m) => m.role === 'handler').map((m) => ({ id: m.id, name: m.name }));
+}
+
+export { blockOffOriginFetch };
 
 /** The sync loop is not started in demo mode; this makes sure nothing else can reach a server either. */
 function blockOffOriginFetch() {
@@ -59,10 +69,10 @@ export function buildDemoData(now: Date) {
   const minsAgo = (n: number) => new Date(now.getTime() - n * 60_000);
   const unitId = 'demo-unit';
 
-  const unit: Unit = { id: unitId, name: DEMO_UNIT_NAME, invite_code: DEMO_INVITE_CODE, created_at: iso(day(40, 9)) };
+  const unit: Unit = { id: unitId, name: DEMO_UNIT_NAME, created_at: iso(day(40, 9)) };
 
   const member = (id: string, name: string, role: Role): Member => ({
-    id, unit_id: unitId, user_id: `demo-user-${id}`, name, role, joined_at: iso(day(40, 9, 5)), removed_at: null,
+    id, unit_id: unitId, user_id: null, name, role, joined_at: iso(day(40, 9, 5)), removed_at: null,
   });
   const members: Member[] = [
     member('demo-t1', 'Sam Rivera', 'trainer'),

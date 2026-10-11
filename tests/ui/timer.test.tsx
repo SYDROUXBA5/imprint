@@ -4,7 +4,7 @@ import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { db, ME_KEY } from '../../src/data/db';
 import type { Dog, Member, Session } from '../../src/domain/types';
-import { dogRow, pick, seedCatalogue } from '../fixtures';
+import { dogRow, meRecord, pick, seedCatalogue } from '../fixtures';
 import { FAKE_CLOCK } from '../fakeClock';
 
 vi.mock('../../src/data/repo', async (importOriginal) => {
@@ -27,7 +27,7 @@ const running = (id: string, odour: string, handler: Member, startedAt = T0): Se
 });
 
 async function seed(sessions: Session[] = [], me: Member = hana) {
-  await db.meta.put({ key: ME_KEY, value: me });
+  await db.meta.put({ key: ME_KEY, value: meRecord(me) });
   await db.members.bulkPut([hana, paul]);
   await seedCatalogue(db);
   await db.dogs.put(rex);
@@ -255,7 +255,7 @@ describe('TimerScreen', () => {
     });
 
     it('goes home when the dog is unknown', async () => {
-      await db.meta.put({ key: ME_KEY, value: hana });
+      await db.meta.put({ key: ME_KEY, value: meRecord(hana) });
       renderTimer();
       expect(await screen.findByTestId('where')).toHaveTextContent('/');
     });

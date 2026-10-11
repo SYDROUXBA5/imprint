@@ -1,6 +1,7 @@
 import { useLiveQuery } from 'dexie-react-hooks';
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { switchName } from '../../data/account';
 import { db } from '../../data/db';
 import { syncStatus, takeNotices } from '../../data/sync';
 import { useMe } from '../../hooks/useMe';
@@ -11,6 +12,7 @@ import { Card } from '../components/Card';
 import { DogDrawing } from '../components/DogDrawing';
 import { HeaderBar } from '../components/HeaderBar';
 import { RunningBanner } from '../components/RunningBanner';
+import { Sheet } from '../components/Sheet';
 import { SyncBadge } from '../components/SyncBadge';
 import { NewTeamSheet } from './NewTeamSheet';
 import { linkButton, plural } from '../shared';
@@ -25,6 +27,7 @@ export function TeamsScreen() {
   const sync = useLiveQuery(() => syncStatus(db), [], NO_SYNC);
   const [notices, setNotices] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
+  const [confirmSwitch, setConfirmSwitch] = useState(false);
 
   // Reading clears them, so keep what we get (and never overwrite it with the empty second read).
   useEffect(() => {
@@ -38,6 +41,9 @@ export function TeamsScreen() {
   if (!me) return null;
   const isTrainer = me.role === 'trainer';
   const archivedCount = archivedTeams.length + archivedDogs.length;
+
+  // Work recorded under this name can only be sent while the phone is still signed in under it.
+  const switchOrAsk = () => (sync.pending > 0 ? setConfirmSwitch(true) : void switchName());
 
   return (
     <div className="screen">
@@ -57,9 +63,17 @@ export function TeamsScreen() {
       ))}
 
       <main className="pad">
-        <p style={{ margin: '0 0 12px', textAlign: 'center', fontWeight: 800, letterSpacing: 1.5, textTransform: 'uppercase' }}>
+        <p style={{ margin: '0 0 4px', textAlign: 'center', fontWeight: 800, letterSpacing: 1.5, textTransform: 'uppercase' }}>
           Trainer&rsquo;s field guide
         </p>
+        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
+          <button type="button" onClick={switchOrAsk} style={{
+            minHeight: 44, maxWidth: '100%', padding: '0 12px', background: 'none', border: 0, color: 'var(--ink)',
+            fontSize: 17, fontWeight: 800, textDecoration: 'underline', overflowWrap: 'anywhere',
+          }}>
+            {me.name} · Switch
+          </button>
+        </div>
 
         {isTrainer && (
           <button type="button" className="btn btn-primary" style={{ width: '100%', marginBottom: 12 }}
@@ -113,6 +127,21 @@ export function TeamsScreen() {
       </main>
 
       {isTrainer && <NewTeamSheet open={creating} onClose={() => setCreating(false)} catalogue={catalogue} />}
+
+      <Sheet open={confirmSwitch} onClose={() => setConfirmSwitch(false)} title="Unsent work">
+        <p style={{ fontSize: 18 }}>
+          {`${me.name} still has ${plural(sync.pending, 'unsent item')} on this phone. Wait for signal and let it send before switching: once the phone is signed in under another name it cannot be sent.`}
+        </p>
+        <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
+          <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => setConfirmSwitch(false)}>
+            {`Stay as ${me.name}`}
+          </button>
+          <button type="button" className="btn" style={{ flex: 1 }}
+            onClick={() => { setConfirmSwitch(false); void switchName(); }}>
+            Switch anyway
+          </button>
+        </div>
+      </Sheet>
     </div>
   );
 }

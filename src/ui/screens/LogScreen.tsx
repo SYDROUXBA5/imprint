@@ -5,7 +5,7 @@ import { formatClock, formatDay, formatMinSec, localDate } from '../../domain/fo
 import { NOT_IN_CURRENT_LIST, isInTeamList, odourName, sortOdours } from '../../domain/odours';
 import { trainedOdours } from '../../domain/progress';
 import { currentDuration, isRunning, latestCorrection, liveElapsed } from '../../domain/totals';
-import type { Correction, Member, Session } from '../../domain/types';
+import type { Correction, Session } from '../../domain/types';
 import { useMe } from '../../hooks/useMe';
 import { useNow } from '../../hooks/useNow';
 import { useUnitData } from '../../hooks/useUnitData';
@@ -112,7 +112,7 @@ export function LogScreen() {
       </main>
 
       {editing && (
-        <CorrectionSheet key={`${editing.session.id}-${editing.mode}`} me={me as Member}
+        <CorrectionSheet key={`${editing.session.id}-${editing.mode}`} me={me}
           sessionId={editing.session.id} mode={editing.mode}
           currentS={currentDuration(editing.session, corrections)}
           summary={`${labelOf(editing.session.odour_id)} · ${formatDay(editing.session.session_date)} · ${nameOf(editing.session.handler_id)}`}

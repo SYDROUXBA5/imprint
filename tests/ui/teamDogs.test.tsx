@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { db, ME_KEY } from '../../src/data/db';
 import { BREEDS } from '../../src/domain/breeds';
 import type { Member, Session } from '../../src/domain/types';
-import { dogRow, seedCatalogue, team } from '../fixtures';
+import { dogRow, meRecord, seedCatalogue, team } from '../fixtures';
 import { TeamDogsScreen } from '../../src/ui/screens/TeamDogsScreen';
 
 const trainer: Member = { id: 'mT', unit_id: 'u1', user_id: 'uT', name: 'Tess', role: 'trainer', joined_at: '', removed_at: null };
@@ -21,7 +21,7 @@ const running = (id: string, dogId: string): Session => ({
 
 /** Alpha: Rex (Malinois, dual), Bella (Labrador, single), archived Old Max. Bravo: Fly. Retired (archived): Hidden. */
 async function seed(me: Member) {
-  await db.meta.put({ key: ME_KEY, value: me });
+  await db.meta.put({ key: ME_KEY, value: meRecord(me) });
   await db.members.bulkPut([trainer, handler]);
   await seedCatalogue(db, ['t1', 't2']);
   await db.teams.update('t2', { name: 'Bravo' });
