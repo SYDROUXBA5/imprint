@@ -5,9 +5,12 @@ let replacingOlderVersion = false;
 self.addEventListener('install', () => { replacingOlderVersion = Boolean(self.registration.active); });
 self.addEventListener('activate', (event) => {
   if (!replacingOlderVersion) return;
-  event.waitUntil((async () => {
-    await self.clients.claim(); // a page can only be navigated by the worker that controls it
-    const pages = await self.clients.matchAll({ type: 'window' });
-    await Promise.all(pages.map((page) => page.navigate(page.url).catch(() => undefined)));
-  })());
+  const claimed = self.clients.claim(); // a page can only be navigated by the worker that controls it
+  event.waitUntil(claimed);
+  // Deliberately NOT inside waitUntil: a navigation waits for this worker to finish activating, so making
+  // activation wait for the navigation would leave both waiting on each other.
+  claimed
+    .then(() => self.clients.matchAll({ type: 'window' }))
+    .then((pages) => { for (const page of pages) page.navigate(page.url).catch(() => undefined); })
+    .catch(() => undefined);
 });
