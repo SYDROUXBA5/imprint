@@ -19,6 +19,8 @@ interface TeamSettingsSheetProps {
   catalogue: Catalogue;
   /** True while a timer runs on any dog of the team: the team cannot be archived then. */
   timerRunning: boolean;
+  /** Where the sheet opens: the settings (default), or straight on the archive question. */
+  startAt?: 'main' | 'archive';
 }
 
 type View = 'main' | 'odours' | 'archive';
@@ -29,13 +31,16 @@ const TITLES: Record<View, string> = { main: 'Team settings', odours: 'Team odou
  * asking). Trainers only; the report buttons also check the role themselves.
  * One sheet with three views, so there is never a sheet on top of a sheet.
  */
-export function TeamSettingsSheet({ open, onClose, team, catalogue, timerRunning }: TeamSettingsSheetProps) {
-  const [view, setView] = useState<View>('main');
-  const close = () => { setView('main'); onClose(); }; // it always opens on the main view
+export function TeamSettingsSheet({ open, onClose, team, catalogue, timerRunning, startAt = 'main' }: TeamSettingsSheetProps) {
+  // null = wherever it was asked to open: the settings, or straight on the archive question.
+  const [moved, setView] = useState<View | null>(null);
+  const view = moved ?? startAt;
+  const close = () => { setView(null); onClose(); };
   return (
     <Sheet open={open} onClose={close} title={TITLES[view]}>
       {/* Mounted only while open, so the fields start fresh every time. */}
-      <Body team={team} catalogue={catalogue} timerRunning={timerRunning} view={view} setView={setView} onClose={close} />
+      <Body team={team} catalogue={catalogue} timerRunning={timerRunning} view={view} setView={setView} onClose={close}
+        archiveOnly={startAt === 'archive'} />
     </Sheet>
   );
 }
@@ -47,9 +52,11 @@ interface BodyProps {
   view: View;
   setView: (v: View) => void;
   onClose: () => void;
+  /** Opened straight on the archive question (the team screen's own button): Cancel then closes the sheet. */
+  archiveOnly: boolean;
 }
 
-function Body({ team, catalogue, timerRunning, view, setView, onClose }: BodyProps) {
+function Body({ team, catalogue, timerRunning, view, setView, onClose, archiveOnly }: BodyProps) {
   const me = useMe();
   const { categories, odours, teamOdours } = catalogue;
   const [name, setName] = useState(team.name);
@@ -135,10 +142,11 @@ function Body({ team, catalogue, timerRunning, view, setView, onClose }: BodyPro
         <p className="sheet-text">
           {`Archive ${team.name}? It and its dogs disappear for everyone; you can restore it from Archived.`}
         </p>
+        {timerRunning && <p role="alert" className="error">Stop the running timer before archiving</p>}
         {error && <p role="alert" className="error">{error}</p>}
         <div className="sheet-actions">
-          <button type="button" className="btn" onClick={() => { setError(''); setView('main'); }}>Cancel</button>
-          <button type="button" className="btn btn-primary btn-danger" disabled={busy} onClick={archive}>
+          <button type="button" className="btn" onClick={() => { setError(''); if (archiveOnly) onClose(); else setView('main'); }}>Cancel</button>
+          <button type="button" className="btn btn-primary btn-danger" disabled={busy || timerRunning} onClick={archive}>
             {`Archive ${team.name}`}
           </button>
         </div>

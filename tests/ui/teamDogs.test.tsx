@@ -538,11 +538,67 @@ describe('TeamDogsScreen', () => {
     });
   });
 
+  describe('Archive team, on the screen itself', () => {
+    it('is offered to a trainer without opening Settings, and asks before archiving', async () => {
+      await seed(trainer);
+      renderTeam();
+      await userEvent.click(await screen.findByRole('button', { name: 'Archive team' }));
+      const dialog = await sheet();
+      expect(dialog.getByRole('heading', { name: 'Archive team' })).toBeInTheDocument();
+      expect(dialog.getByText(
+        'Archive Alpha? It and its dogs disappear for everyone; you can restore it from Archived.',
+      )).toBeInTheDocument();
+      expect((await db.teams.get('t1'))!.archived_at).toBeNull();
+    });
+
+    it('Cancel closes the question and keeps the team', async () => {
+      await seed(trainer);
+      renderTeam();
+      await userEvent.click(await screen.findByRole('button', { name: 'Archive team' }));
+      await userEvent.click((await sheet()).getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      expect((await db.teams.get('t1'))!.archived_at).toBeNull();
+      expect(await db.outbox.count()).toBe(0);
+    });
+
+    it('archives on confirm and returns to the teams', async () => {
+      await seed(trainer);
+      renderTeam();
+      await userEvent.click(await screen.findByRole('button', { name: 'Archive team' }));
+      await userEvent.click((await sheet()).getByRole('button', { name: 'Archive Alpha' }));
+      await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent(/^\/$/));
+      expect((await db.teams.get('t1'))!.archived_at).not.toBeNull();
+      expect((await db.outbox.toArray()).map((i) => `${i.table}:${i.op}`)).toEqual(['teams:update']);
+    });
+
+    it('will not archive while a timer runs on one of its dogs, and says why', async () => {
+      await seed(trainer);
+      await db.sessions.put(running('r', 'd1'));
+      renderTeam();
+      await userEvent.click(await screen.findByRole('button', { name: 'Archive team' }));
+      const dialog = await sheet();
+      expect(dialog.getByRole('alert')).toHaveTextContent('Stop the running timer before archiving');
+      expect(dialog.getByRole('button', { name: 'Archive Alpha' })).toBeDisabled();
+      expect((await db.teams.get('t1'))!.archived_at).toBeNull();
+    });
+
+    it('opens Settings on its own view afterwards, not on the archive question', async () => {
+      await seed(trainer);
+      renderTeam();
+      await userEvent.click(await screen.findByRole('button', { name: 'Archive team' }));
+      await userEvent.click((await sheet()).getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+      await userEvent.click(screen.getByRole('button', { name: 'Settings' }));
+      expect((await sheet()).getByLabelText('Team name')).toBeInTheDocument();
+    });
+  });
+
   it('gives a handler the dogs and nothing to change', async () => {
     await seed(handler);
     renderTeam();
     await screen.findByRole('button', { name: /Rex/ });
     expect(screen.queryByRole('button', { name: '+ Add dog' })).toBeNull();
     expect(screen.queryByRole('button', { name: /settings/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /archive/i })).toBeNull();
   });
 });

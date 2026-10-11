@@ -23,7 +23,8 @@ export function TeamDogsScreen() {
   const { dogs, teams, odours, catalogue, sessions, corrections, loading } = useUnitData();
   const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  // The settings sheet: closed, open on the settings, or open straight on the archive question.
+  const [settings, setSettings] = useState<'main' | 'archive' | null>(null);
 
   const team = teams.find((t) => t.id === teamId);
   const teamDogs = dogs.filter((d) => d.team_id === teamId);
@@ -50,7 +51,7 @@ export function TeamDogsScreen() {
   return (
     <div className="screen">
       <HeaderBar title={team.name} onBack={() => navigate('/')} right={isTrainer ? (
-        <button type="button" className="btn-text" onClick={() => setSettingsOpen(true)}>Settings</button>
+        <button type="button" className="btn-text" onClick={() => setSettings('main')}>Settings</button>
       ) : undefined} />
 
       <div className="band" style={{ marginTop: 8 }}>
@@ -105,12 +106,18 @@ export function TeamDogsScreen() {
           })}
         </ul>
 
-        {freePlaces && <p className="sync-line" style={{ margin: 'auto 0 0' }}>{freePlaces}</p>}
+        <div style={{ marginTop: 'auto', display: 'grid', gap: 12, paddingTop: 16 }}>
+          {isTrainer && (
+            <button type="button" className="btn btn-block" onClick={() => setSettings('archive')}>Archive team</button>
+          )}
+          {freePlaces && <p className="sync-line" style={{ margin: 0 }}>{freePlaces}</p>}
+        </div>
       </main>
 
       {isTrainer && <DogSheet open={adding} onClose={() => setAdding(false)} teams={teams} teamId={team.id} />}
       {isTrainer && (
-        <TeamSettingsSheet open={settingsOpen} onClose={() => setSettingsOpen(false)} team={team} catalogue={catalogue} timerRunning={timerRunning} />
+        <TeamSettingsSheet open={settings !== null} startAt={settings ?? 'main'} onClose={() => setSettings(null)}
+          team={team} catalogue={catalogue} timerRunning={timerRunning} />
       )}
     </div>
   );
