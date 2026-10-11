@@ -3,7 +3,7 @@ import { ImprintDB } from '../../src/data/db';
 import {
   NotAllowedError, addDog, editDog, moveDog, renameDog, startSession, type Ctx,
 } from '../../src/data/repo';
-import { archiveTeam, createTeam, renameTeam, restoreTeam, setTeamOdours } from '../../src/data/teams';
+import { archiveTeam, createTeam, renameTeam, restoreTeam, setTeamOdours, setTeamPlannedDogs } from '../../src/data/teams';
 import type { Member } from '../../src/domain/types';
 import { dogRow, pick, seedCatalogue, team } from '../fixtures';
 
@@ -25,8 +25,8 @@ beforeEach(async () => {
 
 describe('createTeam', () => {
   it('writes the team and a selected team_odours row per odour, team first, in one go', async () => {
-    const t = await createTeam(ctx(trainer), '  Alpha ', ['mdma', 'tnt', 'mdma']);
-    expect(t).toMatchObject({ id: 'id-1', unit_id: 'u1', name: 'Alpha', created_by: 'mT', archived_at: null });
+    const t = await createTeam(ctx(trainer), '  Alpha ', ['mdma', 'tnt', 'mdma'], 6);
+    expect(t).toMatchObject({ id: 'id-1', unit_id: 'u1', name: 'Alpha', created_by: 'mT', archived_at: null, planned_dogs: 6 });
     expect(await db.teams.get('id-1')).toBeDefined();
     const picks = await db.team_odours.where('team_id').equals('id-1').toArray();
     expect(picks.map((p) => [p.id, p.odour_id, p.selected, p.unit_id]).sort()).toEqual([
@@ -34,28 +34,95 @@ describe('createTeam', () => {
     ]);
     const items = await db.outbox.orderBy('seq').toArray();
     expect(items.map((i) => `${i.table}:${i.op}`)).toEqual(['teams:insert', 'team_odours:insert', 'team_odours:insert']);
-    expect(items[0].row).toMatchObject({ id: 'id-1', name: 'Alpha', created_at: '2026-10-03T10:00:00.000Z' });
+    expect(items[0].row).toMatchObject({ id: 'id-1', name: 'Alpha', created_at: '2026-10-03T10:00:00.000Z', planned_dogs: 6 });
   });
 
   it('is trainers only', async () => {
-    await expect(createTeam(ctx(handler), 'Alpha', ['mdma'])).rejects.toBeInstanceOf(NotAllowedError);
+    await expect(createTeam(ctx(handler), 'Alpha', ['mdma'], 6)).rejects.toBeInstanceOf(NotAllowedError);
     expect(await db.teams.count()).toBe(0);
     expect(await db.outbox.count()).toBe(0);
   });
 
   it('needs a name and at least one odour that exists and is not archived', async () => {
-    await expect(createTeam(ctx(trainer), '   ', ['mdma'])).rejects.toThrow(/name/i);
-    await expect(createTeam(ctx(trainer), 'Alpha', [])).rejects.toThrow(/at least one odour/i);
-    await expect(createTeam(ctx(trainer), 'Alpha', ['nope'])).rejects.toThrow(/odour/i);
+    await expect(createTeam(ctx(trainer), '   ', ['mdma'], 6)).rejects.toThrow(/name/i);
+    await expect(createTeam(ctx(trainer), 'Alpha', [], 6)).rejects.toThrow(/at least one odour/i);
+    await expect(createTeam(ctx(trainer), 'Alpha', ['nope'], 6)).rejects.toThrow(/odour/i);
     await db.odours.update('tnt', { archived_at: '2026-10-02T00:00:00Z' });
-    await expect(createTeam(ctx(trainer), 'Alpha', ['mdma', 'tnt'])).rejects.toThrow(/odour/i);
+    await expect(createTeam(ctx(trainer), 'Alpha', ['mdma', 'tnt'], 6)).rejects.toThrow(/odour/i);
     expect(await db.teams.count()).toBe(0);
     expect(await db.outbox.count()).toBe(0); // nothing half-written
   });
 
+  it('keeps the planned number of dogs in the store and in the queued insert', async () => {
+    const t = await createTeam(ctx(trainer), 'Alpha', ['mdma'], 12);
+    expect(t.planned_dogs).toBe(12);
+    expect((await db.teams.get(t.id))!.planned_dogs).toBe(12);
+    expect((await db.outbox.orderBy('seq').first())!.row.planned_dogs).toBe(12);
+  });
+
+  it('needs a planned number of dogs: a whole number, 1 or more', async () => {
+    const bad: unknown[] = [undefined, null, 0, -1, -12, 2.5, 0.5, NaN, Infinity, -Infinity, '3', '', ' ', 'abc', true, [], {}, 2 ** 31, Number.MAX_SAFE_INTEGER + 2];
+    for (const n of bad) {
+      await expect(createTeam(ctx(trainer), 'Alpha', ['mdma'], n as number), String(n)).rejects.toThrow('Enter a whole number, 1 or more.');
+    }
+    expect(await db.teams.count()).toBe(0);
+    expect(await db.team_odours.count()).toBe(0);
+    expect(await db.outbox.count()).toBe(0); // nothing half-written
+  });
+
+  it('accepts 1 and the largest number the database column holds', async () => {
+    expect((await createTeam(ctx(trainer), 'Alpha', ['mdma'], 1)).planned_dogs).toBe(1);
+    expect((await createTeam(ctx(trainer), 'Bravo', ['mdma'], 2 ** 31 - 1)).planned_dogs).toBe(2 ** 31 - 1);
+  });
+
+  it('a handler is turned away before anything else is looked at', async () => {
+    await expect(createTeam(ctx(handler), 'Alpha', ['mdma'], 0)).rejects.toBeInstanceOf(NotAllowedError);
+  });
+
   it('refuses another unit\'s odour', async () => {
     await db.odours.put({ ...(await db.odours.get('mdma'))!, id: 'x-mdma', unit_id: 'u2' });
-    await expect(createTeam(ctx(trainer), 'Alpha', ['x-mdma'])).rejects.toThrow(/odour/i);
+    await expect(createTeam(ctx(trainer), 'Alpha', ['x-mdma'], 6)).rejects.toThrow(/odour/i);
+  });
+});
+
+describe('setTeamPlannedDogs', () => {
+  beforeEach(async () => {
+    await db.teams.put(team('t1', 'Alpha')); // a team from before the column: no planned size
+    await db.teams.put({ ...team('t2', 'Bravo'), planned_dogs: 6 });
+  });
+
+  it('gives a team a size, or changes it: a one-field update through the outbox', async () => {
+    await setTeamPlannedDogs(ctx(trainer), 't1', 4);
+    await setTeamPlannedDogs(ctx(trainer), 't2', 8);
+    expect((await db.teams.get('t1'))!.planned_dogs).toBe(4);
+    expect((await db.teams.get('t2'))!.planned_dogs).toBe(8);
+    const items = await db.outbox.orderBy('seq').toArray();
+    expect(items.map((i) => [i.table, i.op, i.row])).toEqual([
+      ['teams', 'update', { id: 't1', planned_dogs: 4 }],
+      ['teams', 'update', { id: 't2', planned_dogs: 8 }],
+    ]);
+  });
+
+  it('is trainers only', async () => {
+    await expect(setTeamPlannedDogs(ctx(handler), 't2', 8)).rejects.toBeInstanceOf(NotAllowedError);
+    expect((await db.teams.get('t2'))!.planned_dogs).toBe(6);
+    expect(await db.outbox.count()).toBe(0);
+  });
+
+  it('needs a whole number, 1 or more, and changes nothing otherwise', async () => {
+    const bad: unknown[] = [undefined, null, 0, -1, 2.5, NaN, Infinity, '3', '', 'abc', 2 ** 31];
+    for (const n of bad) {
+      await expect(setTeamPlannedDogs(ctx(trainer), 't2', n as number), String(n)).rejects.toThrow('Enter a whole number, 1 or more.');
+    }
+    expect((await db.teams.get('t2'))!.planned_dogs).toBe(6);
+    expect(await db.outbox.count()).toBe(0);
+  });
+
+  it('refuses a team that is not in this unit', async () => {
+    await expect(setTeamPlannedDogs(ctx(trainer), 'nope', 5)).rejects.toThrow(/not found/i);
+    await db.teams.put(team('x1', 'Xray', null, 'u2'));
+    await expect(setTeamPlannedDogs(ctx(trainer), 'x1', 5)).rejects.toThrow(/not found/i);
+    expect(await db.outbox.count()).toBe(0);
   });
 });
 

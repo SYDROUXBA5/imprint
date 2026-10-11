@@ -12,6 +12,7 @@ import { Card } from '../components/Card';
 import { DogDrawing } from '../components/DogDrawing';
 import { HeaderBar } from '../components/HeaderBar';
 import { RunningBanner } from '../components/RunningBanner';
+import { dogCountText } from '../shared';
 import { DogSheet } from './DogSheet';
 import { TeamSettingsSheet } from './TeamSettingsSheet';
 
@@ -47,6 +48,9 @@ export function TeamDogsScreen() {
       ) : undefined} />
       <RunningBanner items={running} />
       <main className="pad">
+        <p className="num" style={{ margin: '0 0 12px', textAlign: 'center', fontWeight: 800 }}>
+          {dogCountText(teamDogs.length, team.planned_dogs)}
+        </p>
         {isTrainer && (
           <button type="button" className="btn btn-primary" style={{ width: '100%', marginBottom: 12 }}
             onClick={() => setAdding(true)}>

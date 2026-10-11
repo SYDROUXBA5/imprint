@@ -71,6 +71,61 @@ describe('TeamsScreen (home)', () => {
     expect(within(screen.getByRole('button', { name: /Empty/ })).getByText('0 dogs')).toBeInTheDocument();
   });
 
+  describe('the dog count on a card', () => {
+    it('says "2 of 6 dogs" when the team has a planned size, and "2 dogs" when it has none', async () => {
+      await seed(trainer);
+      await db.teams.update('t1', { planned_dogs: 6 });
+      renderHome();
+      const alpha = await screen.findByRole('button', { name: /Alpha/ });
+      expect(within(alpha).getByText('2 of 6 dogs')).toBeInTheDocument(); // the archived Old Max is not counted
+      const bravo = screen.getByRole('button', { name: /Bravo/ }); // a team from before the number was asked for
+      expect(within(bravo).getByText('1 dog')).toBeInTheDocument();
+      expect(within(bravo).queryByText(/ of /)).toBeNull();
+    });
+
+    it('treats a team stored before the field existed (no such key at all) as having none', async () => {
+      await seed(trainer);
+      const { planned_dogs: _gone, ...old } = team('t9', 'Ancient');
+      await db.teams.put(old as ReturnType<typeof team>);
+      renderHome();
+      expect(within(await screen.findByRole('button', { name: /Ancient/ })).getByText('0 dogs')).toBeInTheDocument();
+    });
+
+    it('gets the singular right on either side: "1 of 1 dog", "0 of 4 dogs", "1 of 4 dogs"', async () => {
+      await seed(trainer);
+      await db.teams.update('t2', { planned_dogs: 1 });
+      await db.teams.put(team('t8', 'Delta', null, 'u1', 4));
+      await db.teams.put(team('t7', 'Echo', null, 'u1', 4));
+      await db.dogs.put(dogRow('d7', 'Zed', { team_id: 't7' }));
+      renderHome();
+      expect(within(await screen.findByRole('button', { name: /Bravo/ })).getByText('1 of 1 dog')).toBeInTheDocument();
+      expect(within(screen.getByRole('button', { name: /Delta/ })).getByText('0 of 4 dogs')).toBeInTheDocument();
+      expect(within(screen.getByRole('button', { name: /Echo/ })).getByText('1 of 4 dogs')).toBeInTheDocument();
+    });
+
+    it('does not count archived dogs, and follows a dog being archived', async () => {
+      await seed(trainer);
+      await db.teams.update('t1', { planned_dogs: 6 });
+      renderHome();
+      const alpha = await screen.findByRole('button', { name: /Alpha/ });
+      expect(within(alpha).getByText('2 of 6 dogs')).toBeInTheDocument();
+      await db.dogs.update('d2', { archived_at: '2026-10-09T00:00:00Z' });
+      expect(await within(alpha).findByText('1 of 6 dogs')).toBeInTheDocument();
+    });
+
+    it('shows a handler the same text, with nothing to change it', async () => {
+      await seed(handler);
+      await db.teams.update('t1', { planned_dogs: 6 });
+      renderHome();
+      const alpha = await screen.findByRole('button', { name: /Alpha/ });
+      expect(within(alpha).getByText('2 of 6 dogs')).toBeInTheDocument();
+      expect(within(screen.getByRole('button', { name: /Bravo/ })).getByText('1 dog')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /new team/i })).toBeNull();
+      expect(screen.queryByLabelText('Number of dogs')).toBeNull();
+      expect(screen.queryByRole('textbox')).toBeNull();
+    });
+  });
+
   it('opens a team on tap', async () => {
     await seed(trainer);
     renderHome();
@@ -201,16 +256,103 @@ describe('TeamsScreen (home)', () => {
     it('creates the team with exactly the ticked odours, through the outbox, and shows its card', async () => {
       const dialog = await open();
       await userEvent.type(dialog.getByLabelText('Team name'), '  Charlie ');
+      await userEvent.type(dialog.getByLabelText('Number of dogs'), '5');
       await userEvent.click(dialog.getByRole('button', { name: 'Select all Cadaver' }));
       await userEvent.click(dialog.getByRole('checkbox', { name: 'Cocaine' }));
       await userEvent.click(dialog.getByRole('button', { name: 'Create team' }));
       const card = await screen.findByRole('button', { name: /Charlie/ });
-      expect(within(card).getByText('0 dogs')).toBeInTheDocument();
+      expect(within(card).getByText('0 of 5 dogs')).toBeInTheDocument();
       expect(screen.queryByRole('dialog')).toBeNull();
       const made = (await db.teams.toArray()).find((t) => t.name === 'Charlie')!;
       const picks = await db.team_odours.where('team_id').equals(made.id).toArray();
       expect(picks.filter((p) => p.selected).map((p) => p.odour_id).sort()).toEqual(['cocaine', 'human-remains']);
       expect((await db.outbox.toArray()).map((i) => i.table)).toEqual(['teams', 'team_odours', 'team_odours']);
+    });
+
+    describe('Number of dogs', () => {
+      const MESSAGE = 'Enter a whole number, 1 or more.';
+      const fill = async (dialog: Awaited<ReturnType<typeof sheet>>, dogs: string) => {
+        await userEvent.type(dialog.getByLabelText('Team name'), 'Charlie');
+        if (dogs) await userEvent.type(dialog.getByLabelText('Number of dogs'), dogs);
+        await userEvent.click(dialog.getByRole('checkbox', { name: 'Cocaine' }));
+      };
+
+      it('is a labelled, required field with the numeric keypad, empty at first, and says it adds no dogs', async () => {
+        const dialog = await open();
+        const field = dialog.getByLabelText('Number of dogs');
+        expect(field).toHaveValue('');
+        expect(field).toHaveAttribute('inputmode', 'numeric');
+        expect(field).toBeRequired();
+        expect(dialog.getByText(/does not add dogs/i)).toBeInTheDocument();
+        expect(dialog.queryByText(MESSAGE)).toBeNull(); // no scolding before anything was tried
+        const order = [dialog.getByLabelText('Team name'), field, dialog.getByRole('checkbox', { name: 'Cocaine' })];
+        for (let i = 1; i < order.length; i++) {
+          expect(order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        }
+      });
+
+      it.each([
+        ['empty', ''], ['zero', '0'], ['several zeros', '000'], ['negative', '-1'], ['a minus alone', '-'],
+        ['a decimal', '2.5'], ['a decimal comma', '2,5'], ['words', 'abc'], ['digits and words', '3 dogs'],
+        ['an exponent', '1e2'], ['a plus sign', '+3'], ['too big for the database', '2147483648'],
+      ])('%s: shows the message and does not create the team', async (_what, text) => {
+        const dialog = await open();
+        await fill(dialog, text);
+        await userEvent.click(dialog.getByRole('button', { name: 'Create team' }));
+        expect(dialog.getByRole('alert')).toHaveTextContent(MESSAGE);
+        expect(dialog.getByLabelText('Number of dogs')).toBeInvalid();
+        expect(screen.getByRole('dialog')).toBeInTheDocument(); // still open
+        expect(await db.teams.count()).toBe(3); // the seed's three, nothing new
+        expect(await db.outbox.count()).toBe(0);
+      });
+
+      it('shows the message as soon as what was typed cannot be right, and takes it away once it is fixed', async () => {
+        const dialog = await open();
+        await fill(dialog, '0');
+        expect(dialog.getByText(MESSAGE)).toBeInTheDocument(); // without tapping Create team
+        await userEvent.clear(dialog.getByLabelText('Number of dogs'));
+        await userEvent.type(dialog.getByLabelText('Number of dogs'), '4');
+        expect(dialog.queryByText(MESSAGE)).toBeNull();
+        expect(dialog.getByLabelText('Number of dogs')).toBeValid();
+      });
+
+      it('after a failed attempt on an empty field, keeps the message until a number is there', async () => {
+        const dialog = await open();
+        await fill(dialog, '');
+        await userEvent.click(dialog.getByRole('button', { name: 'Create team' }));
+        expect(dialog.getByText(MESSAGE)).toBeInTheDocument();
+        await userEvent.type(dialog.getByLabelText('Number of dogs'), '2');
+        expect(dialog.queryByText(MESSAGE)).toBeNull();
+        await userEvent.click(dialog.getByRole('button', { name: 'Create team' }));
+        expect(await screen.findByRole('button', { name: /Charlie/ })).toBeInTheDocument();
+      });
+
+      it('creates the team with the number (spaces around it are fine), shows "0 of N dogs", and adds no dogs', async () => {
+        const dialog = await open();
+        await fill(dialog, ' 12 ');
+        await userEvent.click(dialog.getByRole('button', { name: 'Create team' }));
+        expect(within(await screen.findByRole('button', { name: /Charlie/ })).getByText('0 of 12 dogs')).toBeInTheDocument();
+        const made = (await db.teams.toArray()).find((t) => t.name === 'Charlie')!;
+        expect(made.planned_dogs).toBe(12);
+        expect((await db.outbox.orderBy('seq').first())!.row).toMatchObject({ id: made.id, name: 'Charlie', planned_dogs: 12 });
+        expect(await db.dogs.count()).toBe(5); // the seed's dogs only
+      });
+
+      it('does not make Create team wait for the number: name and odours still decide that', async () => {
+        const dialog = await open();
+        await userEvent.type(dialog.getByLabelText('Team name'), 'Charlie');
+        expect(dialog.getByRole('button', { name: 'Create team' })).toBeDisabled();
+        await userEvent.click(dialog.getByRole('checkbox', { name: 'Cocaine' }));
+        expect(dialog.getByRole('button', { name: 'Create team' })).toBeEnabled();
+      });
+
+      it('Close discards what was typed, and the next sheet opens empty', async () => {
+        const dialog = await open();
+        await fill(dialog, '7');
+        await userEvent.click(dialog.getByRole('button', { name: 'Close' }));
+        await userEvent.click(screen.getByRole('button', { name: '+ New team' }));
+        expect((await sheet()).getByLabelText('Number of dogs')).toHaveValue('');
+      });
     });
 
     it('offers no archived odour or category', async () => {
@@ -244,6 +386,7 @@ describe('TeamsScreen (home)', () => {
       await userEvent.click(await screen.findByRole('button', { name: '+ New team' }));
       const dialog = await sheet();
       await userEvent.type(dialog.getByLabelText('Team name'), 'First');
+      await userEvent.type(dialog.getByLabelText('Number of dogs'), '3');
       await userEvent.click(dialog.getByRole('button', { name: 'Select all Bed bugs' }));
       await userEvent.click(dialog.getByRole('button', { name: 'Create team' }));
       await waitFor(() => expect(screen.queryByText('No teams yet')).toBeNull());

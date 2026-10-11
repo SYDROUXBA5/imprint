@@ -98,13 +98,16 @@ export function buildDemoData(now: Date) {
     archived_at: iso(day(5, 15)),
   } satisfies Odour);
 
-  const team = (id: string, name: string, created: Date, archived: Date | null = null): Team => ({
+  // Planned sizes: Detection shows "3 of 6 dogs"; Customs has none, like a team made before the number was asked
+  // for, so the older "1 dog" form is on show too.
+  const team = (id: string, name: string, created: Date, planned: number | null, archived: Date | null = null): Team => ({
     id, unit_id: unitId, name, created_by: 'demo-t1', created_at: iso(created), archived_at: archived ? iso(archived) : null,
+    planned_dogs: planned,
   });
   const teams: Team[] = [
-    team('demo-team-detection', 'Detection', day(40, 9, 30)),
-    team('demo-team-customs', 'Customs', day(30, 9, 30)),
-    team('demo-team-2025', 'Training 2025', day(40, 9, 40), day(15, 17)),
+    team('demo-team-detection', 'Detection', day(40, 9, 30), 6),
+    team('demo-team-customs', 'Customs', day(30, 9, 30), null),
+    team('demo-team-2025', 'Training 2025', day(40, 9, 40), 2, day(15, 17)),
   ];
   // Each team trains on its own odours: Detection on narcotics and explosives, Customs on a few narcotics,
   // the custom Banknotes and the bed bugs, the archived team on cocaine only.

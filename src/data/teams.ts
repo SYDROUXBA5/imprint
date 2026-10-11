@@ -1,6 +1,7 @@
 // Team actions (spec §13.1). Like the dog actions in repo.ts they work offline: they change the local
 // store and queue the change in the outbox. Trainers only; the database enforces the same by RLS.
 import { selectedOdourIds, teamOdourId } from '../domain/odours';
+import { requirePlannedDogs } from '../domain/plannedDogs';
 import type { Odour, Team, TeamOdour } from '../domain/types';
 import { cleanName, idOf, nowOf, requireTrainer, runningSessionForDog, writeAll, type Ctx, type WriteOp } from './repo';
 
@@ -24,14 +25,19 @@ async function requireOdours(c: Ctx, odourIds: string[]): Promise<Odour[]> {
 const choice = (teamId: string, odourId: string, unitId: string, selected: boolean): TeamOdour =>
   ({ id: teamOdourId(teamId, odourId), team_id: teamId, odour_id: odourId, unit_id: unitId, selected });
 
-/** A team and the odours it trains on, in one step (spec §13.1: "name + which odours it trains"). */
-export async function createTeam(c: Ctx, name: string, odourIds: string[]): Promise<Team> {
+/**
+ * A team, the odours it trains on and the number of dogs it is planned to hold, in one step (spec §13.1: "name +
+ * which odours it trains"). The number is a plan, no dogs are created, and it is required here (a whole number,
+ * 1 or more) although the column is nullable, so that teams from before the number was asked for stay legal.
+ */
+export async function createTeam(c: Ctx, name: string, odourIds: string[], plannedDogs: number): Promise<Team> {
   requireTrainer(c);
   const clean = cleanName(name, 'Team');
+  const planned = requirePlannedDogs(plannedDogs);
   const odours = await requireOdours(c, odourIds);
   const team: Team = {
     id: idOf(c), unit_id: c.me.unit_id, name: clean, created_by: c.me.id,
-    created_at: nowOf(c).toISOString(), archived_at: null,
+    created_at: nowOf(c).toISOString(), archived_at: null, planned_dogs: planned,
   };
   await writeAll(c, [
     { table: 'teams', op: 'insert', row: { ...team } },
@@ -45,6 +51,14 @@ export async function renameTeam(c: Ctx, teamId: string, name: string): Promise<
   const clean = cleanName(name, 'Team');
   await requireTeam(c, teamId);
   await writeAll(c, [{ table: 'teams', op: 'update', row: { id: teamId, name: clean } }]);
+}
+
+/** Set or change the number of dogs the team is planned to hold (also for a team made before it was asked for). */
+export async function setTeamPlannedDogs(c: Ctx, teamId: string, plannedDogs: number): Promise<void> {
+  requireTrainer(c);
+  const planned = requirePlannedDogs(plannedDogs);
+  await requireTeam(c, teamId);
+  await writeAll(c, [{ table: 'teams', op: 'update', row: { id: teamId, planned_dogs: planned } }]);
 }
 
 /** Refused while a dog of the team has a running timer. The team and its dogs then disappear for everyone. */

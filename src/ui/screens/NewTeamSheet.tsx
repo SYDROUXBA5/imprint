@@ -3,11 +3,16 @@ import { db } from '../../data/db';
 import { createTeam } from '../../data/teams';
 import type { Catalogue } from '../../domain/types';
 import { useMe } from '../../hooks/useMe';
+import { usePlannedDogsInput } from '../../hooks/usePlannedDogsInput';
 import { OdourPicker } from '../components/OdourPicker';
+import { PlannedDogsField } from '../components/PlannedDogsField';
 import { Sheet } from '../components/Sheet';
 import { stickyFooter } from '../shared';
 
-/** Create a team: a name and the odours it trains on (spec §13.1). At least one odour. Trainers only. */
+/**
+ * Create a team: a name, the number of dogs it will hold (a plan, it adds no dogs) and the odours it trains on
+ * (spec §13.1). At least one odour. Trainers only.
+ */
 export function NewTeamSheet({ open, onClose, catalogue }: { open: boolean; onClose: () => void; catalogue: Catalogue }) {
   return (
     <Sheet open={open} onClose={onClose} title="New team">
@@ -21,6 +26,7 @@ function NewTeamForm({ onClose, catalogue }: { onClose: () => void; catalogue: C
   const me = useMe();
   const { categories, odours } = catalogue;
   const [name, setName] = useState('');
+  const dogs = usePlannedDogsInput();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -32,10 +38,11 @@ function NewTeamForm({ onClose, catalogue }: { onClose: () => void; catalogue: C
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!me || busy || !ready) return;
+    if (dogs.value === null) { dogs.complain(); return; }
     setBusy(true);
     setError('');
     try {
-      await createTeam({ db, me }, name, chosen);
+      await createTeam({ db, me }, name, chosen, dogs.value);
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create the team.');
@@ -44,9 +51,12 @@ function NewTeamForm({ onClose, catalogue }: { onClose: () => void; catalogue: C
   }
 
   return (
-    <form onSubmit={submit}>
+    // noValidate: the field says what is wrong in its own words, not in the browser's bubble.
+    <form onSubmit={submit} noValidate>
       <label className="label" htmlFor="team-name">Team name</label>
       <input id="team-name" className="field" value={name} autoComplete="off" onChange={(e) => setName(e.target.value)} />
+
+      <PlannedDogsField id="team-dogs" text={dogs.text} onChange={dogs.setText} showError={dogs.showError} inputRef={dogs.input} />
 
       <p className="label">Odours this team trains on</p>
       <OdourPicker categories={categories} odours={odours} selected={selected} onChange={setSelected} />

@@ -17,8 +17,9 @@ export const catalogueRows = (unitId = 'u1') =>
 export const CATEGORIES = catalogueRows().categories;
 export const ODOURS = catalogueRows().odours;
 
-export const team = (id = 't1', name = 'Alpha', archived: string | null = null, unitId = 'u1'): Team => ({
-  id, unit_id: unitId, name, created_by: 'mT', created_at: '2026-10-01T00:00:00Z', archived_at: archived,
+/** A team with no planned number of dogs (like one made before it was asked for) unless `planned` says. */
+export const team = (id = 't1', name = 'Alpha', archived: string | null = null, unitId = 'u1', planned: number | null = null): Team => ({
+  id, unit_id: unitId, name, created_by: 'mT', created_at: '2026-10-01T00:00:00Z', archived_at: archived, planned_dogs: planned,
 });
 
 export const pick = (teamId: string, odourId: string, selected = true, unitId = 'u1'): TeamOdour => ({

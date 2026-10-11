@@ -15,7 +15,7 @@ import { RunningBanner } from '../components/RunningBanner';
 import { Sheet } from '../components/Sheet';
 import { SyncBadge } from '../components/SyncBadge';
 import { NewTeamSheet } from './NewTeamSheet';
-import { linkButton, plural } from '../shared';
+import { dogCountText, linkButton, plural } from '../shared';
 
 const NO_SYNC = { pending: 0, rejected: 0, stale: false };
 
@@ -105,7 +105,7 @@ export function TeamsScreen() {
                   <span style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 56 }}>
                     <span style={{ flex: 1, minWidth: 0 }}>
                       <span style={{ display: 'block', fontSize: 26, fontWeight: 800, overflowWrap: 'anywhere' }}>{t.name}</span>
-                      <span className="num" style={{ display: 'block' }}>{plural(count, 'dog')}</span>
+                      <span className="num" style={{ display: 'block' }}>{dogCountText(count, t.planned_dogs)}</span>
                     </span>
                     {runningTeams.has(t.id) && (
                       <span role="img" aria-label="Timer running" style={{

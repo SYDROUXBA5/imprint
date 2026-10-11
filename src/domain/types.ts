@@ -46,6 +46,12 @@ export interface Team {
   created_by: string;
   created_at: string;
   archived_at: string | null;
+  /**
+   * How many dogs the team is planned to hold ("2 of 6 dogs"); a plan only, it creates no dogs. Null for a
+   * team made before the number was asked for. A row stored before the field existed has no such key at all,
+   * so read it with `== null`, never `=== null`.
+   */
+  planned_dogs: number | null;
   updated_at?: string;
 }
 

@@ -1,12 +1,14 @@
 import { useState, type FormEvent } from 'react';
 import { db } from '../../data/db';
-import { archiveTeam, renameTeam, setTeamOdours } from '../../data/teams';
+import { archiveTeam, renameTeam, setTeamOdours, setTeamPlannedDogs } from '../../data/teams';
 import { selectedOdourIds } from '../../domain/odours';
 import { exportTeamCsv, exportTeamReport } from '../../export/run';
 import type { Catalogue, Team } from '../../domain/types';
 import { useMe } from '../../hooks/useMe';
+import { usePlannedDogsInput } from '../../hooks/usePlannedDogsInput';
 import { ExportButton, UnsyncedNote } from '../components/ExportButton';
 import { OdourPicker } from '../components/OdourPicker';
+import { PlannedDogsField } from '../components/PlannedDogsField';
 import { Sheet } from '../components/Sheet';
 import { plural, stickyFooter } from '../shared';
 
@@ -23,7 +25,7 @@ type View = 'main' | 'odours' | 'archive';
 const TITLES: Record<View, string> = { main: 'Team settings', odours: 'Team odours', archive: 'Archive team' };
 
 /**
- * A team's settings (spec §13.1): rename, which odours it trains on, the team reports (§13.6), archive (after
+ * A team's settings (spec §13.1): rename, how many dogs it will hold, which odours it trains on, the team reports (§13.6), archive (after
  * asking). Trainers only; the report buttons also check the role themselves.
  * One sheet with three views, so there is never a sheet on top of a sheet.
  */
@@ -51,6 +53,8 @@ function Body({ team, catalogue, timerRunning, view, setView, onClose }: BodyPro
   const me = useMe();
   const { categories, odours, teamOdours } = catalogue;
   const [name, setName] = useState(team.name);
+  const savedDogs = team.planned_dogs == null ? '' : String(team.planned_dogs); // a team from before the number was asked for has none
+  const dogs = usePlannedDogsInput(savedDogs);
   // What is saved, until the trainer changes a tick; then their draft.
   const [draft, setDraft] = useState<Set<string> | null>(null);
   const picked = draft ?? selectedOdourIds(teamOdours, team.id);
@@ -80,6 +84,13 @@ function Body({ team, catalogue, timerRunning, view, setView, onClose }: BodyPro
   async function saveName(e: FormEvent) {
     e.preventDefault();
     if (await run(() => renameTeam({ db, me: me! }, team.id, name), 'Could not rename the team.')) onClose();
+  }
+
+  async function saveDogs(e: FormEvent) {
+    e.preventDefault();
+    if (dogs.value === null) { dogs.complain(); return; }
+    const planned = dogs.value;
+    if (await run(() => setTeamPlannedDogs({ db, me: me! }, team.id, planned), 'Could not save the number of dogs.')) onClose();
   }
 
   async function saveOdours() {
@@ -143,6 +154,15 @@ function Body({ team, catalogue, timerRunning, view, setView, onClose }: BodyPro
         <button type="submit" className="btn" disabled={busy || !name.trim() || name.trim() === team.name}
           style={{ width: '100%', marginTop: 12 }}>
           Save name
+        </button>
+      </form>
+
+      {/* noValidate: the field says what is wrong in its own words, not in the browser's bubble. */}
+      <form onSubmit={saveDogs} noValidate>
+        <PlannedDogsField id="team-settings-dogs" text={dogs.text} onChange={dogs.setText} showError={dogs.showError} inputRef={dogs.input} />
+        <button type="submit" className="btn" disabled={busy || dogs.text.trim() === savedDogs}
+          style={{ width: '100%', marginTop: 12 }}>
+          Save number of dogs
         </button>
       </form>
 

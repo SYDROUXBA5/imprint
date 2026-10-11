@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { ImprintDB } from '../../src/data/db';
 import { addCorrection, addDog, moveDog, startSession, stopSession, type Ctx } from '../../src/data/repo';
-import { archiveTeam, createTeam, setTeamOdours } from '../../src/data/teams';
+import { archiveTeam, createTeam, setTeamOdours, setTeamPlannedDogs } from '../../src/data/teams';
 import type { RemoteError, RemoteStore } from '../../src/data/remote';
 import { pullChanges, pushOutbox, syncOnce, syncStatus, takeNotices } from '../../src/data/sync';
 import type { Member } from '../../src/domain/types';
@@ -236,7 +236,7 @@ const teamTombstone = (teamId: string) => ({
 
 describe('teams, catalogue and team odours', () => {
   it('pushes a new team before its odour choices, and a choice goes up as an overwrite whatever its op', async () => {
-    const t = await createTeam(ctx(), 'Bravo', ['mdma']);
+    const t = await createTeam(ctx(), 'Bravo', ['mdma'], 6);
     await setTeamOdours(ctx(), t.id, ['mdma', 'tnt']);
     await setTeamOdours(ctx(), t.id, ['tnt']); // mdma off
     const { remote, calls } = fakeRemote();
@@ -255,7 +255,7 @@ describe('teams, catalogue and team odours', () => {
 
   it('pushes catalogue edits and a moved dog as updates', async () => {
     const dog = await addDog(ctx(), 'Rex', 't1', 'labrador', 'single');
-    const bravo = await createTeam(ctx(), 'Bravo', ['mdma']);
+    const bravo = await createTeam(ctx(), 'Bravo', ['mdma'], 6);
     await moveDog(ctx(), dog.id, bravo.id);
     await archiveTeam(ctx(), bravo.id);
     const { remote, calls } = fakeRemote();
@@ -305,8 +305,43 @@ describe('teams, catalogue and team odours', () => {
     expect((await db.team_odours.get('t1:tnt'))?.selected).toBe(false);
   });
 
+  it('the planned number of dogs goes up with the new team and as a one-field update', async () => {
+    const t = await createTeam(ctx(), 'Bravo', ['mdma'], 6);
+    await setTeamPlannedDogs(ctx(), t.id, 8);
+    await setTeamPlannedDogs(ctx(), 't1', 3); // a team from before the number was asked for
+    const { remote, calls } = fakeRemote();
+    await pushOutbox({ db, remote, unitId: 'u1', now });
+    expect(calls.find((c) => c.op === 'insert' && c.table === 'teams')!.row).toMatchObject({ id: t.id, name: 'Bravo', planned_dogs: 6 });
+    expect(calls.filter((c) => c.op === 'update').map((c) => [c.table, c.row])).toEqual([
+      ['teams', { id: t.id, planned_dogs: 8 }],
+      ['teams', { id: 't1', planned_dogs: 3 }],
+    ]);
+  });
+
+  it('pulls the planned number of dogs, and a change to it, and keeps a team without one at null', async () => {
+    const { remote, serverRows } = fakeRemote();
+    serverRows.teams = [
+      { id: 't2', unit_id: 'u1', name: 'Bravo', created_by: 'mT', created_at: '', archived_at: null, planned_dogs: 6, updated_at: '2026-10-03T09:00:00.000Z' },
+      { id: 't3', unit_id: 'u1', name: 'Old', created_by: 'mT', created_at: '', archived_at: null, planned_dogs: null, updated_at: '2026-10-03T09:00:01.000Z' },
+    ];
+    await pullChanges({ db, remote, unitId: 'u1', now });
+    expect((await db.teams.get('t2'))!.planned_dogs).toBe(6);
+    expect((await db.teams.get('t3'))!.planned_dogs).toBeNull();
+    serverRows.teams = [{ ...serverRows.teams[0], planned_dogs: 9, updated_at: '2026-10-03T09:05:00.000Z' }];
+    await pullChanges({ db, remote, unitId: 'u1', now });
+    expect((await db.teams.get('t2'))!.planned_dogs).toBe(9);
+  });
+
+  it('does not overwrite a planned number of dogs that still has an unsent local change', async () => {
+    await setTeamPlannedDogs(ctx(), 't1', 5);
+    const { remote, serverRows } = fakeRemote();
+    serverRows.teams = [{ ...(await db.teams.get('t1')), planned_dogs: 99, updated_at: '2026-10-03T10:01:00.000Z' }];
+    await pullChanges({ db, remote, unitId: 'u1', now });
+    expect((await db.teams.get('t1'))!.planned_dogs).toBe(5);
+  });
+
   it('syncStatus counts a team and its choices as the records they are', async () => {
-    await createTeam(ctx(), 'Bravo', ['mdma', 'tnt']);
+    await createTeam(ctx(), 'Bravo', ['mdma', 'tnt'], 6);
     expect((await syncStatus(db)).pending).toBe(3); // the team and two choices
   });
 });
@@ -316,7 +351,7 @@ describe('deleted teams (tombstones)', () => {
   async function world() {
     const rex = await addDog(ctx(), 'Rex', 't1', 'labrador', 'single');
     const fly = await addDog(ctx(), 'Fly', 't1', 'hound', 'dual');
-    const bravo = await createTeam(ctx(), 'Bravo', ['mdma']);
+    const bravo = await createTeam(ctx(), 'Bravo', ['mdma'], 6);
     const max = await addDog(ctx(), 'Max', bravo.id, 'other', 'single');
     const rexSession = await startSession(ctx(), rex.id, 'mdma');
     await stopSession(ctx(), rexSession.id);

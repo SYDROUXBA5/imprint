@@ -6,6 +6,7 @@ import { needsClockCheck, overlappingSessionIds } from '../../src/domain/flags';
 import { IMPRINT_TARGET_S, isImprinted, isRunning, latestCorrection, odourTotal } from '../../src/domain/totals';
 import { isBreedId, isPurpose } from '../../src/domain/breeds';
 import { DEFAULT_CATALOGUE, isInTeamList } from '../../src/domain/odours';
+import { isPlannedDogs } from '../../src/domain/plannedDogs';
 import { dogRow, team } from '../fixtures';
 
 const NOW = new Date(2026, 9, 9, 12, 0, 0);
@@ -57,6 +58,21 @@ describe('demo seed', () => {
     // the archived team holds a dog; the active ones hold several between them, an archived dog among them
     const archivedTeam = teams.find((t) => t.archived_at !== null)!;
     expect(dogs.filter((d) => d.team_id === archivedTeam.id).length).toBeGreaterThan(0);
+  });
+
+  it('gives the demo teams planned sizes, except Customs, which shows the older "N dogs" form', async () => {
+    await seedDemo('trainer', { db, now: NOW });
+    const { dogs } = await load();
+    const teams = await db.teams.toArray();
+    const byName = Object.fromEntries(teams.map((t) => [t.name, t]));
+    expect(byName.Detection.planned_dogs).toBe(6);
+    expect(byName.Customs.planned_dogs).toBeNull(); // a team from before the number was asked for
+    for (const t of teams.filter((t) => t.planned_dogs !== null)) {
+      expect(isPlannedDogs(t.planned_dogs), t.name).toBe(true);
+      const active = dogs.filter((d) => d.team_id === t.id && d.archived_at === null).length;
+      expect(t.planned_dogs!, `${t.name} holds more dogs than planned`).toBeGreaterThanOrEqual(active);
+    }
+    for (const t of teams) expect(t, t.name).toHaveProperty('planned_dogs'); // the key is always there, null or a number
   });
 
   it('has the four default categories, a custom category with a custom odour, and a different list for each team', async () => {

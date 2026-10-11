@@ -65,6 +65,70 @@ describe('TeamDogsScreen', () => {
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/$/);
   });
 
+  describe('the dog count', () => {
+    it('says "2 of 6 dogs" when the team has a planned size, counting only active dogs', async () => {
+      await seed(trainer);
+      await db.teams.update('t1', { planned_dogs: 6 }); // Rex and Bella; the archived Old Max is not counted
+      renderTeam();
+      expect(await screen.findByText('2 of 6 dogs')).toBeInTheDocument();
+      expect(screen.queryByText('2 dogs')).toBeNull();
+    });
+
+    it('says "2 dogs" for a team with no planned size, and "1 dog" for one dog', async () => {
+      await seed(trainer);
+      renderTeam();
+      expect(await screen.findByText('2 dogs')).toBeInTheDocument();
+      expect(screen.queryByText(/ of /)).toBeNull();
+      renderTeam('/team/t2');
+      expect(await screen.findByText('1 dog')).toBeInTheDocument();
+    });
+
+    it('has the right singular on either side, and shows the plan for a team with no dogs yet', async () => {
+      await seed(trainer);
+      await db.teams.update('t2', { planned_dogs: 1 });
+      await db.teams.put(team('t9', 'Empty', null, 'u1', 4));
+      renderTeam('/team/t2');
+      expect(await screen.findByText('1 of 1 dog')).toBeInTheDocument();
+      renderTeam('/team/t9');
+      expect(await screen.findByText('0 of 4 dogs')).toBeInTheDocument();
+      expect(screen.getByText('No dogs yet')).toBeInTheDocument();
+    });
+
+    it('treats a team stored before the field existed (no such key) as having no planned size', async () => {
+      await seed(trainer);
+      const old: Partial<ReturnType<typeof team>> = team('t9', 'Ancient');
+      delete old.planned_dogs;
+      await db.teams.put(old as ReturnType<typeof team>);
+      renderTeam('/team/t9');
+      expect(await screen.findByText('0 dogs')).toBeInTheDocument();
+    });
+
+    it('follows a dog being added or archived, and a size changed on another phone', async () => {
+      await seed(trainer);
+      await db.teams.update('t1', { planned_dogs: 6 });
+      renderTeam();
+      expect(await screen.findByText('2 of 6 dogs')).toBeInTheDocument();
+      await db.dogs.put(dogRow('d9', 'Newbie'));
+      expect(await screen.findByText('3 of 6 dogs')).toBeInTheDocument();
+      await db.dogs.update('d9', { archived_at: '2026-10-09T00:00:00Z' });
+      expect(await screen.findByText('2 of 6 dogs')).toBeInTheDocument();
+      await db.teams.update('t1', { planned_dogs: 8 });
+      expect(await screen.findByText('2 of 8 dogs')).toBeInTheDocument();
+    });
+
+    it('shows a handler the same text, with no control to change it', async () => {
+      await seed(handler);
+      await db.teams.update('t1', { planned_dogs: 6 });
+      renderTeam();
+      expect(await screen.findByText('2 of 6 dogs')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Number of dogs')).toBeNull();
+      expect(screen.queryByRole('textbox')).toBeNull();
+      expect(screen.queryByRole('button', { name: /number of dogs/i })).toBeNull();
+      expect(screen.queryByRole('button', { name: /settings/i })).toBeNull();
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
+  });
+
   it('lists only this team\'s active dogs, by name', async () => {
     await seed(trainer);
     renderTeam();
@@ -273,6 +337,100 @@ describe('TeamDogsScreen', () => {
       await userEvent.click(save);
       expect(await screen.findByRole('heading', { level: 1, name: 'Alpha Two' })).toBeInTheDocument();
       expect((await db.outbox.toArray()).map((i) => i.row)).toEqual([{ id: 't1', name: 'Alpha Two' }]);
+    });
+
+    describe('Number of dogs', () => {
+      const MESSAGE = 'Enter a whole number, 1 or more.';
+
+      it('is filled with the planned size, and Save waits for a change', async () => {
+        await seed(trainer);
+        await db.teams.update('t1', { planned_dogs: 6 });
+        renderTeam();
+        await userEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+        const dialog = await sheet();
+        const field = dialog.getByLabelText('Number of dogs');
+        expect(field).toHaveValue('6');
+        expect(field).toHaveAttribute('inputmode', 'numeric');
+        expect(dialog.getByRole('button', { name: 'Save number of dogs' })).toBeDisabled();
+        await userEvent.type(field, '0');
+        expect(dialog.getByRole('button', { name: 'Save number of dogs' })).toBeEnabled();
+      });
+
+      it('changes the size: a one-field update through the outbox, then the screen shows it', async () => {
+        await seed(trainer);
+        await db.teams.update('t1', { planned_dogs: 6 });
+        renderTeam();
+        await userEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+        const dialog = await sheet();
+        await userEvent.clear(dialog.getByLabelText('Number of dogs'));
+        await userEvent.type(dialog.getByLabelText('Number of dogs'), '9');
+        await userEvent.click(dialog.getByRole('button', { name: 'Save number of dogs' }));
+        expect(await screen.findByText('2 of 9 dogs')).toBeInTheDocument();
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect((await db.teams.get('t1'))!.planned_dogs).toBe(9);
+        expect((await db.outbox.toArray()).map((i) => [i.table, i.op, i.row])).toEqual([['teams', 'update', { id: 't1', planned_dogs: 9 }]]);
+        expect(await db.dogs.count()).toBe(5); // a plan only: no dog was added
+      });
+
+      it('gives a team from before the number was asked for a size: the field starts empty', async () => {
+        await seed(trainer); // Alpha has no planned size
+        renderTeam();
+        expect(await screen.findByText('2 dogs')).toBeInTheDocument();
+        await userEvent.click(screen.getByRole('button', { name: 'Settings' }));
+        const dialog = await sheet();
+        expect(dialog.getByLabelText('Number of dogs')).toHaveValue('');
+        expect(dialog.getByRole('button', { name: 'Save number of dogs' })).toBeDisabled();
+        await userEvent.type(dialog.getByLabelText('Number of dogs'), '5');
+        await userEvent.click(dialog.getByRole('button', { name: 'Save number of dogs' }));
+        expect(await screen.findByText('2 of 5 dogs')).toBeInTheDocument();
+        expect((await db.teams.get('t1'))!.planned_dogs).toBe(5);
+      });
+
+      it.each([
+        ['empty', ''], ['zero', '0'], ['negative', '-2'], ['a decimal', '2.5'], ['words', 'abc'], ['digits and words', '4 dogs'],
+      ])('%s: shows the message and saves nothing', async (_what, text) => {
+        await seed(trainer);
+        await db.teams.update('t1', { planned_dogs: 6 });
+        renderTeam();
+        await userEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+        const dialog = await sheet();
+        const field = dialog.getByLabelText('Number of dogs');
+        await userEvent.clear(field);
+        if (text) await userEvent.type(field, text);
+        await userEvent.click(dialog.getByRole('button', { name: 'Save number of dogs' }));
+        expect(dialog.getByRole('alert')).toHaveTextContent(MESSAGE);
+        expect(field).toBeInvalid();
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
+        expect((await db.teams.get('t1'))!.planned_dogs).toBe(6);
+        expect(await db.outbox.count()).toBe(0);
+      });
+
+      it('the message goes away once the number is right', async () => {
+        await seed(trainer);
+        await db.teams.update('t1', { planned_dogs: 6 });
+        renderTeam();
+        await userEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+        const dialog = await sheet();
+        await userEvent.clear(dialog.getByLabelText('Number of dogs'));
+        await userEvent.type(dialog.getByLabelText('Number of dogs'), '0');
+        expect(dialog.getByText(MESSAGE)).toBeInTheDocument();
+        await userEvent.clear(dialog.getByLabelText('Number of dogs'));
+        await userEvent.type(dialog.getByLabelText('Number of dogs'), '3');
+        expect(dialog.queryByText(MESSAGE)).toBeNull();
+      });
+
+      it('is not touched by saving the name, and the name is not touched by saving the number', async () => {
+        await seed(trainer);
+        await db.teams.update('t1', { planned_dogs: 6 });
+        renderTeam();
+        await userEvent.click(await screen.findByRole('button', { name: 'Settings' }));
+        const dialog = await sheet();
+        await userEvent.type(dialog.getByLabelText('Team name'), ' Two');
+        await userEvent.click(dialog.getByRole('button', { name: 'Save name' }));
+        await screen.findByRole('heading', { level: 1, name: 'Alpha Two' });
+        expect((await db.outbox.toArray()).map((i) => i.row)).toEqual([{ id: 't1', name: 'Alpha Two' }]);
+        expect((await db.teams.get('t1'))!.planned_dogs).toBe(6);
+      });
     });
 
     it('changes the odours the team trains on', async () => {
