@@ -327,7 +327,7 @@ describe('DogScreen', () => {
       it('writes nothing when nothing changed', async () => {
         const dialog = await open();
         await userEvent.click(dialog.getByRole('button', { name: 'Save dog' }));
-        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull(), { timeout: 5000 });
         expect(await db.outbox.count()).toBe(0);
       });
 

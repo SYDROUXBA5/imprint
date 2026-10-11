@@ -3,6 +3,11 @@ import { createRoot } from 'react-dom/client'
 import './ui/theme.css'
 import App from './App.tsx'
 import { demoMode } from './dev/demoMode.ts'
+import { registerSW } from 'virtual:pwa-register'
+
+// A phone that already has the app keeps the old copy until the new one is fetched. This swaps it in and
+// reloads once, so nobody is left on a stale version after an update.
+registerSW({ immediate: true })
 
 const root = createRoot(document.getElementById('root')!)
 const render = () => root.render(
