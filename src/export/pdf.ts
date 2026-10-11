@@ -24,13 +24,13 @@ export interface DogReportInput {
 /** The standard PDF fonts draw Latin-1 only. Anything else would come out as garbage, so show "?" instead. */
 export const pdfSafe = (text: string): string => Array.from(text).map((ch) => (ch.charCodeAt(0) <= 0xff ? ch : '?')).join('');
 
-// Field Guide colours as RGB.
-const MUSTARD: [number, number, number] = [184, 144, 28];
-const OLIVE: [number, number, number] = [85, 96, 31];
-const INK: [number, number, number] = [30, 26, 20];
-const PAPER: [number, number, number] = [245, 239, 220];
-const RULE: [number, number, number] = [227, 217, 188];
-const STAMP: [number, number, number] = [192, 50, 43];
+// Plate colours as RGB (the same palette as src/ui/theme.css).
+const BRASS: [number, number, number] = [169, 131, 43];
+const MOSS: [number, number, number] = [79, 93, 47];
+const INK: [number, number, number] = [31, 28, 23];
+const PAPER: [number, number, number] = [245, 241, 230];
+const RULE: [number, number, number] = [207, 199, 179];
+const STAMP: [number, number, number] = [176, 58, 46];
 
 const MARGIN = 14;
 const PAGE_W = 210;
@@ -112,9 +112,9 @@ type Doc = InstanceType<Awaited<typeof import('jspdf')>['jsPDF']>;
 
 const generatedLine = (at: Date, by: string) => `Generated ${formatDay(localDate(at))} by ${by}`;
 
-/** The mustard band across the top of a page: a title, then up to three smaller lines. */
+/** The brass band across the top of a page: a title, then up to three smaller lines. */
 function drawHeader(doc: Doc, h: { title: string; subtitle?: string; unitLine: string; generated: string }) {
-  doc.setFillColor(...MUSTARD);
+  doc.setFillColor(...BRASS);
   doc.rect(0, 0, PAGE_W, 36, 'F');
   doc.setTextColor(...INK);
   doc.setFont('helvetica', 'bold');
@@ -188,14 +188,14 @@ function drawDogPage(doc: Doc, input: DogReportInput): void {
       doc.setFont('helvetica', 'normal');
       doc.text(formatMinSec(total), X_TOTAL_RIGHT, textY, { align: 'right' });
 
-      // Bar: an outlined track with an olive fill, full at 75:00.
+      // Bar: an outlined track with a moss fill, full at 75:00.
       const frac = Math.min(1, total / IMPRINT_TARGET_S);
       doc.setFillColor(255, 255, 255);
       doc.setDrawColor(...INK);
       doc.setLineWidth(0.3);
       doc.rect(X_BAR, y + 2, BAR_W, 4, 'FD');
       if (frac > 0) {
-        doc.setFillColor(...OLIVE);
+        doc.setFillColor(...MOSS);
         doc.rect(X_BAR, y + 2, BAR_W * frac, 4, 'F');
         doc.rect(X_BAR, y + 2, BAR_W, 4, 'S');
       }
