@@ -83,6 +83,25 @@ describe('TeamsScreen (home)', () => {
       expect(within(bravo).queryByText(/ of /)).toBeNull();
     });
 
+    it('draws a dot per dog and per free place on a card, for a plan of 12 dogs or fewer', async () => {
+      await seed(trainer);
+      await db.teams.update('t1', { planned_dogs: 6 });
+      renderHome();
+      const dots = within(await screen.findByRole('button', { name: /Alpha/ })).getByTestId('capacity-dots');
+      expect(dots.querySelectorAll('.dot-filled')).toHaveLength(2);
+      expect(dots.querySelectorAll('.dot:not(.dot-filled)')).toHaveLength(4);
+    });
+
+    it('shows text alone for a plan of more than 12 dogs, and for a team with no plan', async () => {
+      await seed(trainer);
+      await db.teams.update('t1', { planned_dogs: 13 });
+      renderHome();
+      const alpha = within(await screen.findByRole('button', { name: /Alpha/ }));
+      expect(alpha.getByText('2 of 13 dogs')).toBeInTheDocument();
+      expect(alpha.queryByTestId('capacity-dots')).toBeNull();
+      expect(within(screen.getByRole('button', { name: /Bravo/ })).queryByTestId('capacity-dots')).toBeNull();
+    });
+
     it('treats a team stored before the field existed (no such key at all) as having none', async () => {
       await seed(trainer);
       const { planned_dogs: _gone, ...old } = team('t9', 'Ancient');
@@ -133,11 +152,13 @@ describe('TeamsScreen (home)', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/team/t2');
   });
 
-  it('puts a dot on a team with a timer running, and pins the timer at the top', async () => {
+  it('puts a LIVE tag on a team with a timer running, and shows the timer in a box at the top', async () => {
     await seed(trainer);
     await db.sessions.put(running('r', 'd4', 'mdma'));
     renderHome();
-    expect(await screen.findByText(/^Running · Fly · MDMA · 12:0[4-9] · Paul$/)).toBeInTheDocument();
+    expect(await screen.findByText('Fly on MDMA, with Paul')).toBeInTheDocument();
+    expect(screen.getByText('Running now')).toBeInTheDocument();
+    expect(screen.getByText(/^12:0[4-9]$/)).toBeInTheDocument();
     const bravo = screen.getByRole('button', { name: /Bravo/ });
     expect(within(bravo).getByRole('img', { name: 'Timer running' })).toBeInTheDocument();
     expect(within(screen.getByRole('button', { name: /Alpha/ })).queryByRole('img', { name: 'Timer running' })).toBeNull();
@@ -170,12 +191,13 @@ describe('TeamsScreen (home)', () => {
     expect(screen.queryByRole('link', { name: /Archived/ })).toBeNull();
   });
 
-  it('has the field-guide heading, and an empty state that points a trainer to the first team', async () => {
+  it('has the Imprint masthead, and an empty state that points a trainer to the first team', async () => {
     await db.meta.put({ key: ME_KEY, value: meRecord(trainer) });
     renderHome();
     expect(await screen.findByText('No teams yet')).toBeInTheDocument();
     expect(screen.getByText('Create your first team')).toBeInTheDocument();
-    expect(screen.getByText(/Trainer.s field guide/i)).toBeInTheDocument();
+    expect(screen.getByText('Imprint')).toBeInTheDocument();
+    expect(screen.getByText(/K9 unit . training log/i)).toBeInTheDocument();
   });
 
   it('shows a handler the team cards and nothing else', async () => {
@@ -199,11 +221,13 @@ describe('TeamsScreen (home)', () => {
     expect(screen.queryByRole('link')).toBeNull();
   });
 
-  it('shows the sync badge with the number of unsynced records', async () => {
+  it('says everything is saved and synced, or how many changes are waiting', async () => {
     await seed(trainer);
-    await db.outbox.add({ table: 'dogs', op: 'insert', row: { id: 'd1' }, created_at: new Date().toISOString(), status: 'pending' });
     renderHome();
-    expect(await screen.findByText('1 record not synced yet')).toBeInTheDocument();
+    expect(await screen.findByText('Everything saved and synced.')).toBeInTheDocument();
+    await db.outbox.add({ table: 'dogs', op: 'insert', row: { id: 'd1' }, created_at: new Date().toISOString(), status: 'pending' });
+    expect(await screen.findByText('1 change waiting to sync.')).toBeInTheDocument();
+    expect(screen.queryByText('Everything saved and synced.')).toBeNull();
   });
 
   it('shows a one-off sync notice once, and lets it be dismissed', async () => {

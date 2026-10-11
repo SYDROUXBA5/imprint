@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -66,19 +66,27 @@ describe('TimerScreen', () => {
     expect(await screen.findByRole('heading', { name: 'Rex' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'MDMA' })).toBeInTheDocument();
     expect(clock()).toHaveTextContent('0:00');
-    expect(screen.getByText('42 / 75 min total')).toBeInTheDocument();
+    expect(screen.getByText('42 of 75 minutes')).toBeInTheDocument();
+    expect(screen.getByText('33 to go')).toBeInTheDocument();
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '56');
     expect(screen.getByRole('button', { name: 'Start' })).toBeEnabled();
     expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
   });
 
-  it('hides the decorative dots around the dog name from screen readers', async () => {
+  it('puts the dog in a strip under the odour title, saying nobody has started it yet', async () => {
     await seed();
     renderTimer();
-    const h1 = await screen.findByRole('heading', { name: 'Rex' });
-    const dots = within(h1).getAllByText('•');
-    expect(dots).toHaveLength(2);
-    dots.forEach((d) => expect(d).toHaveAttribute('aria-hidden', 'true'));
+    const dog = await screen.findByRole('heading', { name: 'Rex' });
+    expect(screen.getByRole('heading', { level: 1, name: 'MDMA' })).toBeInTheDocument();
+    expect(dog.closest('.strip')).toHaveTextContent('not running');
+    expect(screen.getByText('This session')).toBeInTheDocument();
+  });
+
+  it('says when and by whom the running session was started', async () => {
+    await seed([running('r', 'mdma', hana, new Date(Date.now() - 5000).toISOString())]);
+    renderTimer();
+    const dog = await screen.findByRole('heading', { name: 'Rex' });
+    expect(dog.closest('.strip')).toHaveTextContent(/^Rexstarted \d\d:\d\d by Hana$/);
   });
 
   it('Start creates a running session and the clock counts up to 12:04', async () => {
@@ -92,14 +100,17 @@ describe('TimerScreen', () => {
     expect(clock()).toHaveTextContent('12:04');
   });
 
-  it('the caption and ring include live time', async () => {
+  it('the caption and bar include live time, the live part in brass', async () => {
     await seed([manual('s1', 'mdma', 42)]);
     renderTimer();
     await user().click(await screen.findByRole('button', { name: 'Start' }));
     await screen.findByRole('button', { name: 'Stop' });
     await advance(724_000);
-    expect(screen.getByText('54 / 75 min total')).toBeInTheDocument();
+    expect(screen.getByText('54 of 75 minutes')).toBeInTheDocument();
     expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '72');
+    expect(screen.getByRole('progressbar').querySelector('[data-bar-live]')).not.toBeNull();
+    expect(screen.getByText('logged before, 42 min')).toBeInTheDocument();
+    expect(screen.getByText('now, 12 min')).toBeInTheDocument();
   });
 
   it('Stop saves the session and shows "+12 min · now 54/75"', async () => {
@@ -161,6 +172,17 @@ describe('TimerScreen', () => {
     expect((await db.sessions.get('r'))!.ended_at).toBeNull();
   });
 
+  it('tells the numerals how many characters they have, so they can be sized to fit at any width', async () => {
+    await seed([running('r', 'mdma', hana, new Date(Date.now() - 724_000).toISOString())]);
+    renderTimer();
+    await screen.findByRole('button', { name: 'Stop' });
+    expect(clock()).toHaveTextContent('12:04');
+    expect(clock().style.getPropertyValue('--chars')).toBe('5');
+    await advance(3_000_000); // past the hour: 1:02:04
+    expect(clock()).toHaveTextContent('1:02:04');
+    expect(clock().style.getPropertyValue('--chars')).toBe('7');
+  });
+
   it('says so when Start loses a race with another handler', async () => {
     await seed();
     vi.mocked(startSession).mockRejectedValueOnce(new AlreadyRunningError(running('r', 'heroin', paul)));
@@ -216,7 +238,7 @@ describe('TimerScreen', () => {
       await u.click(screen.getByRole('button', { name: 'Save session' }));
       expect(await screen.findByText('Rex: MDMA imprinted')).toBeInTheDocument();
       await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Add a session I forgot to time' })).toBeNull());
-      expect(await screen.findByText('76 / 75 min total')).toBeInTheDocument();
+      expect(await screen.findByText('76 of 75 minutes')).toBeInTheDocument();
       expect(screen.queryByRole('alert')).toBeNull();
       expect(await db.outbox.count()).toBe(1); // queued for sync
       await u.click(screen.getByText('Rex: MDMA imprinted'));
@@ -228,7 +250,7 @@ describe('TimerScreen', () => {
       renderTimer();
       await screen.findByRole('button', { name: 'Start' });
       await advance(2000);
-      expect(screen.getByText('80 / 75 min total')).toBeInTheDocument();
+      expect(screen.getByText('80 of 75 minutes')).toBeInTheDocument();
       expect(celebrating()).toBe('false');
     });
 

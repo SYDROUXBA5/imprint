@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   addCategory, addOdour, archiveCategory, archiveOdour, renameCategory, renameOdour, restoreCategory, restoreOdour,
@@ -10,10 +10,6 @@ import { useMe } from '../../hooks/useMe';
 import { useUnitData } from '../../hooks/useUnitData';
 import { HeaderBar } from '../components/HeaderBar';
 import { Sheet } from '../components/Sheet';
-
-const card: CSSProperties = { marginTop: 16, padding: '8px 14px 14px', border: '1.5px solid var(--ink)', borderRadius: 'var(--radius)', background: 'var(--paper)' };
-const row: CSSProperties = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, minHeight: 56, borderTop: '1px solid var(--rule)' };
-const small: CSSProperties = { fontSize: 14, padding: '0 8px' };
 
 type Dialog =
   | { kind: 'addCategory' }
@@ -56,8 +52,8 @@ export function OdoursScreen() {
   return (
     <div className="screen">
       <HeaderBar title="Odours" onBack={() => navigate('/')} />
-      <main className="pad">
-        <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={() => setDialog({ kind: 'addCategory' })}>
+      <main className="page">
+        <button type="button" className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => setDialog({ kind: 'addCategory' })}>
           + Add category
         </button>
         {error && <p role="alert" className="error">{error}</p>}
@@ -65,31 +61,31 @@ export function OdoursScreen() {
         {active.map((category) => {
           const items = sortOdours(odours.filter((o) => o.category_id === category.id && o.archived_at === null));
           return (
-            <section key={category.id} aria-label={category.name} style={card}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 56 }}>
-                <h2 style={{ flex: 1, minWidth: 0, fontSize: 22, overflowWrap: 'break-word' }}>{category.name}</h2>
+            <section key={category.id} aria-label={category.name} className="section">
+              <div className="section-head">
+                <h2 style={{ flex: 1, minWidth: 0 }}>{category.name}</h2>
                 <span style={{ display: 'flex', gap: 6, flex: 'none' }}>
-                  <button type="button" className="btn" style={small} aria-label={`Rename ${category.name}`}
+                  <button type="button" className="btn btn-sm" aria-label={`Rename ${category.name}`}
                     onClick={() => setDialog({ kind: 'renameCategory', category })}>Rename</button>
-                  <button type="button" className="btn" style={small} aria-label={`Archive ${category.name}`}
+                  <button type="button" className="btn btn-sm" aria-label={`Archive ${category.name}`}
                     onClick={() => setDialog({ kind: 'archiveCategory', category })}>Archive</button>
                 </span>
               </div>
-              {items.length === 0 && <p className="muted" style={{ margin: '4px 0 8px' }}>No odours yet</p>}
-              <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+              {items.length === 0 && <p className="hint" style={{ margin: '4px 0 8px' }}>No odours yet</p>}
+              <ul className="rows">
                 {items.map((o) => (
-                  <li key={o.id} style={row}>
-                    <span data-odour-name style={{ flex: 1, minWidth: 0, fontSize: 18, fontWeight: 700, overflowWrap: 'break-word' }}>{o.name}</span>
+                  <li key={o.id} className="odour-edit-row">
+                    <span data-odour-name style={{ fontSize: 20, fontWeight: 600, overflowWrap: 'break-word' }}>{o.name}</span>
                     <span style={{ display: 'flex', gap: 6, flex: 'none' }}>
-                      <button type="button" className="btn" style={small} aria-label={`Rename ${o.name}`}
+                      <button type="button" className="btn btn-sm" aria-label={`Rename ${o.name}`}
                         onClick={() => setDialog({ kind: 'renameOdour', odour: o })}>Rename</button>
-                      <button type="button" className="btn" style={small} aria-label={`Archive ${o.name}`}
+                      <button type="button" className="btn btn-sm" aria-label={`Archive ${o.name}`}
                         onClick={() => setDialog({ kind: 'archiveOdour', odour: o })}>Archive</button>
                     </span>
                   </li>
                 ))}
               </ul>
-              <button type="button" className="btn" style={{ width: '100%', marginTop: 10 }}
+              <button type="button" className="btn btn-block" style={{ marginTop: 12 }}
                 aria-label={`Add odour to ${category.name}`} onClick={() => setDialog({ kind: 'addOdour', category })}>
                 + Add odour
               </button>
@@ -98,13 +94,13 @@ export function OdoursScreen() {
         })}
 
         {(archivedCategories.length > 0 || archivedOdours.length > 0) && (
-          <section aria-label="Archived" style={{ ...card, marginTop: 24 }}>
-            <h2 style={{ fontSize: 22, minHeight: 48, display: 'flex', alignItems: 'center' }}>Archived</h2>
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+          <section aria-label="Archived" className="section">
+            <h2 style={{ minHeight: 44, display: 'flex', alignItems: 'center' }}>Archived</h2>
+            <ul className="rows">
               {archivedCategories.map((c) => (
-                <li key={c.id} style={row}>
-                  <span style={{ fontSize: 18, fontWeight: 700, overflowWrap: 'anywhere' }}>{c.name}</span>
-                  <button type="button" className="btn btn-primary" style={small} aria-label={`Restore ${c.name}`}
+                <li key={c.id} className="odour-edit-row">
+                  <span style={{ fontSize: 20, fontWeight: 600, overflowWrap: 'anywhere' }}>{c.name}</span>
+                  <button type="button" className="btn btn-sm" aria-label={`Restore ${c.name}`}
                     onClick={() => restore(() => restoreCategory(ctx, c.id))}>Restore</button>
                 </li>
               ))}
@@ -112,15 +108,15 @@ export function OdoursScreen() {
                 const parent = categoryOf(o.category_id);
                 const parentArchived = parent?.archived_at != null;
                 return (
-                  <li key={o.id} style={row}>
+                  <li key={o.id} className="odour-edit-row">
                     <span style={{ minWidth: 0 }}>
-                      <span style={{ display: 'block', fontSize: 18, fontWeight: 700, overflowWrap: 'anywhere' }}>{o.name}</span>
-                      <span className="muted" style={{ display: 'block' }}>{parent?.name ?? ''}</span>
+                      <span style={{ display: 'block', fontSize: 20, fontWeight: 600, overflowWrap: 'anywhere' }}>{o.name}</span>
+                      <span className="soft typed" style={{ display: 'block', fontSize: 14 }}>{parent?.name ?? ''}</span>
                     </span>
                     {parentArchived ? (
-                      <span className="muted" style={{ fontWeight: 700, textAlign: 'right' }}>Restore the category first</span>
+                      <span className="hint" style={{ margin: 0, textAlign: 'right' }}>Restore the category first</span>
                     ) : (
-                      <button type="button" className="btn btn-primary" style={small} aria-label={`Restore ${o.name}`}
+                      <button type="button" className="btn btn-sm" aria-label={`Restore ${o.name}`}
                         onClick={() => restore(() => restoreOdour(ctx, o.id))}>Restore</button>
                     )}
                   </li>
@@ -198,7 +194,7 @@ function NameSheet({ title, label, submitLabel, initial = '', onClose, onSubmit 
           aria-invalid={error ? true : undefined} aria-describedby={error ? 'catalogue-error' : undefined}
           onChange={(e) => { setName(e.target.value); setError(''); }} />
         {error && <p id="catalogue-error" role="alert" className="error">{error}</p>}
-        <button type="submit" className="btn btn-primary" disabled={busy || !name.trim()} style={{ width: '100%', marginTop: 16 }}>
+        <button type="submit" className="btn btn-primary btn-block" disabled={busy || !name.trim()} style={{ marginTop: 20 }}>
           {submitLabel}
         </button>
       </form>
@@ -227,11 +223,11 @@ function ConfirmSheet({ title, text, confirmLabel, onClose, onConfirm }: {
 
   return (
     <Sheet open onClose={onClose} title={title}>
-      <p style={{ fontSize: 18, overflowWrap: 'anywhere' }}>{text}</p>
+      <p className="sheet-text">{text}</p>
       {error && <p role="alert" className="error">{error}</p>}
-      <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-        <button type="button" className="btn" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
-        <button type="button" className="btn btn-primary" style={{ flex: 1 }} disabled={busy} onClick={confirm}>{confirmLabel}</button>
+      <div className="sheet-actions">
+        <button type="button" className="btn" onClick={onClose}>Cancel</button>
+        <button type="button" className="btn btn-primary btn-danger" disabled={busy} onClick={confirm}>{confirmLabel}</button>
       </div>
     </Sheet>
   );

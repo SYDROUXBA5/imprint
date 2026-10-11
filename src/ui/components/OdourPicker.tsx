@@ -36,35 +36,35 @@ export function OdourPicker({ categories, odours, selected, onChange }: OdourPic
 
   return (
     <div>
-      <p role="status" className="num" style={{ margin: '0 0 8px', fontWeight: 800 }}>
+      <p role="status" className="num" style={{ margin: '0 0 8px', fontWeight: 700, fontSize: 15 }}>
         {count === 0 ? 'No odours selected' : `${plural(count, 'odour')} selected`}
       </p>
       {groups.map(({ category, odours: items }) => {
         const ids = items.map((o) => o.id);
         const all = ids.length > 0 && ids.every((id) => selected.has(id));
         return (
-          <div key={category.id} role="group" aria-label={category.name} style={{
-            marginBottom: 12, padding: '4px 12px 8px', border: '1.5px solid var(--ink)', borderRadius: 'var(--radius)',
-            background: 'var(--paper)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-              <h3 style={{ fontSize: 20, overflowWrap: 'anywhere' }}>{category.name}</h3>
+          <div key={category.id} role="group" aria-label={category.name} className="section" style={{ marginTop: 14 }}>
+            <div className="section-head">
+              <h3 style={{ fontSize: 22, overflowWrap: 'anywhere' }}>{category.name}</h3>
               {items.length > 0 && (
-                <button type="button" className="btn" aria-pressed={all} aria-label={`Select all ${category.name}`}
+                <button type="button" className="btn btn-sm" aria-pressed={all} aria-label={`Select all ${category.name}`}
                   onClick={() => toggleAll(ids, !all)}
-                  style={{ fontSize: 15, padding: '0 14px', background: all ? 'var(--ink)' : 'var(--paper)', color: all ? 'var(--paper)' : 'var(--ink)' }}>
+                  style={all ? { background: 'var(--ink)', color: 'var(--paper)' } : undefined}>
                   Select all
                 </button>
               )}
             </div>
-            {items.length === 0 && <p className="muted" style={{ margin: '4px 0 8px' }}>No odours yet</p>}
-            {items.map((o) => (
-              <label key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 'var(--tap)', fontSize: 18, fontWeight: 700 }}>
-                <input type="checkbox" checked={selected.has(o.id)} onChange={(e) => toggle(o.id, e.target.checked)}
-                  style={{ width: 24, height: 24, flex: 'none', accentColor: 'var(--olive)' }} />
-                <span style={{ overflowWrap: 'anywhere' }}>{o.name}</span>
-              </label>
-            ))}
+            {items.length === 0 && <p className="hint" style={{ margin: '0 0 8px' }}>No odours yet</p>}
+            <ul className="rows">
+              {items.map((o) => (
+                <li key={o.id}>
+                  <label className="check">
+                    <input type="checkbox" checked={selected.has(o.id)} onChange={(e) => toggle(o.id, e.target.checked)} />
+                    <span style={{ overflowWrap: 'anywhere' }}>{o.name}</span>
+                  </label>
+                </li>
+              ))}
+            </ul>
           </div>
         );
       })}

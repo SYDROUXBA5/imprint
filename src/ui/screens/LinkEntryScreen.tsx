@@ -2,8 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { enterWithLink } from '../../data/account';
 import { parseLink } from '../../domain/link';
-import { DogDrawing } from '../components/DogDrawing';
-import { HeaderBar } from '../components/HeaderBar';
+import { Masthead } from '../components/Masthead';
 import { INVALID_LINK, friendlyLinkError } from '../linkErrors';
 
 /**
@@ -40,19 +39,18 @@ export function LinkEntryScreen() {
 
   return (
     <div className="screen">
-      <HeaderBar title="Imprint" />
-      <main className="pad" style={{ textAlign: 'center' }}>
-        <DogDrawing />
+      <Masthead as="h1" />
+      <main className="page" style={{ marginTop: 20 }}>
         {problem ? (
           <>
-            <p role="alert" className="error" style={{ fontSize: 18 }}>{problem}</p>
-            <button type="button" className="btn btn-primary" style={{ width: '100%', marginTop: 12 }}
+            <p role="alert" className="error">{problem}</p>
+            <button type="button" className="btn btn-primary" style={{ marginTop: 16 }}
               onClick={() => setAttempt((n) => n + 1)}>
               Try again
             </button>
           </>
         ) : (
-          <p role="status" style={{ fontSize: 18, fontWeight: 800 }}>Opening your link&hellip;</p>
+          <p role="status" className="italic" style={{ fontSize: 20 }}>Opening your link&hellip;</p>
         )}
       </main>
     </div>
@@ -65,11 +63,10 @@ export function LinkProblemScreen() {
   const message = (useLocation().state as { message?: string } | null)?.message ?? INVALID_LINK;
   return (
     <div className="screen">
-      <HeaderBar title="Imprint" />
-      <main className="pad" style={{ textAlign: 'center' }}>
-        <DogDrawing />
-        <p style={{ fontSize: 20, fontWeight: 800 }}>{message}</p>
-        <button type="button" className="btn btn-primary" style={{ width: '100%', marginTop: 12 }}
+      <Masthead as="h1" />
+      <main className="page" style={{ marginTop: 20 }}>
+        <p style={{ fontSize: 22, margin: 0 }}>{message}</p>
+        <button type="button" className="btn btn-primary" style={{ marginTop: 20 }}
           onClick={() => navigate('/', { replace: true })}>
           Back
         </button>

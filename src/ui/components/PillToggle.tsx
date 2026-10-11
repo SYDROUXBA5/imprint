@@ -2,36 +2,31 @@ export interface PillOption { value: string; label: string }
 
 /**
  * Toggle buttons (not tabs), one per option: each reports whether it is the selected one with aria-pressed.
- * Up to three share the width; with more they keep a readable size and the row scrolls sideways (spec §13.4).
+ * `tabs` (the default) are typed capitals with an ink underline on the chosen one; `choice` is a row of
+ * secondary buttons with the chosen one filled in ink. Up to three share the width; with more they keep a
+ * readable size and the row scrolls sideways (spec §13.4).
  */
-export function PillToggle({ value, options, onChange, label = 'Odour category' }: {
+export function PillToggle({ value, options, onChange, label = 'Odour category', variant = 'tabs' }: {
   value: string;
   options: PillOption[];
   onChange: (value: string) => void;
   label?: string;
+  variant?: 'tabs' | 'choice';
 }) {
   const scrolls = options.length > 3;
+  const choice = variant === 'choice';
   return (
-    <div role="group" aria-label={label} style={{
-      display: 'grid',
-      gridAutoFlow: 'column',
-      gridAutoColumns: scrolls ? 'minmax(120px, max-content)' : '1fr',
-      border: '1.5px solid var(--ink)', borderRadius: 999, background: 'var(--paper)',
-      overflowX: scrolls ? 'auto' : 'hidden',
-    }}>
-      {options.map((o, i) => {
-        const selected = o.value === value;
-        return (
-          <button key={o.value} type="button" aria-pressed={selected} onClick={() => onChange(o.value)}
-            style={{
-              border: 0, borderLeft: i > 0 ? '1.5px solid var(--ink)' : 0, borderRadius: 0, fontSize: 18, fontWeight: 800, padding: scrolls ? '0 16px' : undefined,
-              background: selected ? 'var(--ink)' : 'transparent',
-              color: selected ? 'var(--paper)' : 'var(--ink)',
-            }}>
-            {o.label}
-          </button>
-        );
-      })}
+    <div role="group" aria-label={label} className={choice ? 'choices' : 'tabs'}
+      style={{
+        overflowX: scrolls ? 'auto' : 'hidden',
+        ...(choice && { gridAutoFlow: 'column', gridAutoColumns: scrolls ? 'minmax(120px, max-content)' : '1fr' }),
+      }}>
+      {options.map((o) => (
+        <button key={o.value} type="button" className={choice ? 'choice' : 'tab'}
+          aria-pressed={o.value === value} onClick={() => onChange(o.value)}>
+          {o.label}
+        </button>
+      ))}
     </div>
   );
 }

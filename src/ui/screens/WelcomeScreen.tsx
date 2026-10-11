@@ -1,8 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { enterWithLink } from '../../data/account';
 import { parseLink } from '../../domain/link';
-import { DogDrawing } from '../components/DogDrawing';
-import { HeaderBar } from '../components/HeaderBar';
+import { Masthead } from '../components/Masthead';
 import { friendlyLinkError } from '../linkErrors';
 
 /**
@@ -36,32 +35,27 @@ export function WelcomeScreen({ lost = false }: { lost?: boolean }) {
 
   return (
     <div className="screen">
-      <HeaderBar title="Imprint" />
-      <main className="pad">
-        <div style={{ display: 'grid', justifyItems: 'center', gap: 4, textAlign: 'center' }}>
-          <DogDrawing />
-          <p style={{ margin: 0, fontWeight: 800, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-            Trainer&rsquo;s field guide
+      <Masthead as="h1" />
+      <main className="page" style={{ marginTop: 20 }}>
+        <div style={{ borderTop: '1.5px solid var(--ink)', paddingTop: 14 }}>
+          <p style={{ margin: 0, fontSize: 24, lineHeight: 1.2 }}>
+            {lost
+              ? 'Your link has changed. Ask your trainer for the new one.'
+              : 'Open the link your trainer sent you, or paste it here.'}
           </p>
+          {lost && (
+            <p className="italic soft" style={{ margin: '8px 0 0' }}>
+              What you recorded is kept on this phone.
+            </p>
+          )}
         </div>
-
-        <p style={{ margin: '20px 0 0', fontSize: 20, fontWeight: 800, textAlign: 'center' }}>
-          {lost
-            ? 'Your link has changed. Ask your trainer for the new one.'
-            : 'Open the link your trainer sent you, or paste it here.'}
-        </p>
-        {lost && (
-          <p className="muted" style={{ margin: '8px 0 0', textAlign: 'center' }}>
-            What you recorded is kept on this phone.
-          </p>
-        )}
 
         <form onSubmit={submit} aria-label="Open a link" style={{ marginTop: 8 }}>
           <label className="label" htmlFor="w-link">Your link</label>
           <input id="w-link" className="field" value={pasted} autoComplete="off" autoCapitalize="none" spellCheck={false}
             inputMode="url" onChange={(e) => setPasted(e.target.value)} />
           {error && <p role="alert" className="error">{error}</p>}
-          <button type="submit" className="btn btn-primary" disabled={busy} style={{ width: '100%', marginTop: 16 }}>
+          <button type="submit" className="btn btn-primary btn-block" disabled={busy} style={{ marginTop: 18 }}>
             Open
           </button>
         </form>

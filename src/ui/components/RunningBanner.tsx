@@ -1,20 +1,22 @@
 import { useNow } from '../../hooks/useNow';
-import { formatClock } from '../../domain/format';
+import { formatTypedClock } from '../../domain/format';
 
 export interface RunningItem { dog: string; odour: string; handler: string; startedAt: string }
 
+/** One brass-outlined box per timer running right now: "Kestrel on C4/RDX, with Tom" and its time. */
 export function RunningBanner({ items }: { items: RunningItem[] }) {
   const now = useNow(items.length > 0 ? 1000 : null);
   if (items.length === 0) return null;
   return (
-    <section aria-label="Running timers" style={{
-      background: 'var(--mustard)', borderBottom: '1.5px solid var(--ink)', padding: '0 16px 10px',
-      textAlign: 'center', fontWeight: 800, fontSize: 17,
-    }}>
+    <section aria-label="Running timers">
       {items.map((i) => (
-        <p key={`${i.dog}|${i.odour}|${i.startedAt}`} className="num" style={{ margin: 0 }}>
-          {`Running · ${i.dog} · ${i.odour} · ${formatClock((now - Date.parse(i.startedAt)) / 1000)} · ${i.handler}`}
-        </p>
+        <div key={`${i.dog}|${i.odour}|${i.startedAt}`} className="running-box">
+          <div className="running-box-main">
+            <div className="caps">Running now</div>
+            <div className="running-line">{`${i.dog} on ${i.odour}, with ${i.handler}`}</div>
+          </div>
+          <div className="running-time">{formatTypedClock((now - Date.parse(i.startedAt)) / 1000)}</div>
+        </div>
       ))}
     </section>
   );

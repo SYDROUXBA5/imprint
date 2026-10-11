@@ -30,18 +30,11 @@ export function Sheet({ open, onClose, title, children }: SheetProps) {
   if (!open) return null;
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 50 }}>
-      <div data-testid="sheet-backdrop" onClick={onClose}
-        style={{ position: 'absolute', inset: 0, background: 'rgba(30, 26, 20, 0.45)' }} />
-      <div ref={panel} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1}
-        style={{
-          position: 'absolute', left: 0, right: 0, bottom: 0, margin: '0 auto', maxWidth: 480,
-          maxHeight: '88dvh', overflowY: 'auto', background: 'var(--paper)',
-          borderTop: '3px solid var(--ink)', borderRadius: '20px 20px 0 0',
-          padding: '12px 16px calc(20px + env(safe-area-inset-bottom))',
-        }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-          <h2 id={titleId} style={{ fontSize: 22 }}>{title}</h2>
-          <button type="button" onClick={onClose} className="btn" style={{ padding: '0 14px' }}>Close</button>
+      <div data-testid="sheet-backdrop" className="sheet-backdrop" onClick={onClose} />
+      <div ref={panel} role="dialog" aria-modal="true" aria-labelledby={titleId} tabIndex={-1} className="sheet">
+        <div className="sheet-head">
+          <h2 id={titleId}>{title}</h2>
+          <button type="button" onClick={onClose} className="btn-text">Close</button>
         </div>
         {children}
       </div>

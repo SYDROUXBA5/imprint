@@ -54,8 +54,8 @@ export function CorrectionSheet({ me, sessionId, summary, currentS, mode, onClos
   return (
     <Sheet open onClose={onClose} title={isVoid ? 'Void session' : 'Correct session'}>
       <form onSubmit={submit} noValidate>
-        <p style={{ margin: '8px 0 0', fontWeight: 800, overflowWrap: 'anywhere' }}>{summary}</p>
-        <p className="muted" style={{ margin: '2px 0 0' }}>
+        <p className="num" style={{ margin: '8px 0 0', fontWeight: 700, fontSize: 15, overflowWrap: 'anywhere' }}>{summary}</p>
+        <p className="hint">
           {isVoid
             ? 'It will count as 0:00. The original stays in the history.'
             : `Counts as ${formatClock(currentS)} now. The original stays in the history.`}
@@ -78,11 +78,11 @@ export function CorrectionSheet({ me, sessionId, summary, currentS, mode, onClos
 
         <label className="label" htmlFor="corr-reason">Reason</label>
         <textarea id="corr-reason" className="field" rows={2} value={reason}
-          style={{ padding: '10px 14px', resize: 'vertical' }}
+          style={{ resize: 'vertical' }}
           onChange={(e) => setReason(e.target.value)} />
 
         {error && <p role="alert" className="error">{error}</p>}
-        <button type="submit" className="btn btn-primary" disabled={busy} style={{ width: '100%', marginTop: 16 }}>
+        <button type="submit" className={`btn btn-primary btn-block${isVoid ? ' btn-danger' : ''}`} disabled={busy} style={{ marginTop: 20 }}>
           {isVoid ? 'Void session' : 'Save correction'}
         </button>
       </form>

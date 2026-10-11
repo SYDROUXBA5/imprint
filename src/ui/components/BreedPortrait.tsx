@@ -5,10 +5,10 @@ import './breedPortrait.css';
 
 export interface BreedPortraitProps {
   breed: BreedId;
-  size: 'sm' | 'md' | 'lg';
+  size: 'xs' | 'sm' | 'md' | 'lg';
   /**
    * Whether the drawing should play: the ink reveal and stamp settle, then (see `idle`) the sniff loop. It
-   * plays when this turns on and again whenever `breed` changes while it is on. The small size never plays,
+   * plays when this turns on and again whenever `breed` changes while it is on. The small sizes never play,
    * and nothing plays under `prefers-reduced-motion`.
    */
   play: boolean;
@@ -19,8 +19,11 @@ export interface BreedPortraitProps {
   idle?: boolean;
 }
 
-/** Edge of the square drawing, in px: small on cards, medium in the dog header, large in the picker. */
-const EDGE = { sm: 72, md: 112, lg: 192 } as const;
+/**
+ * Edge of the square drawing, in px: tiny in the timer's strip, small in a dog row, medium (the plate) on the dog
+ * screen, large in the breed picker.
+ */
+const EDGE = { xs: 56, sm: 104, md: 150, lg: 192 } as const;
 
 /**
  * Three thin hand-drawn scent wisps. Each is anchored with its right end on the nose and slides in from the
@@ -46,7 +49,7 @@ function subscribeReducedMotion(onChange: () => void) {
 const reducedMotionNow = () => mediaQuery()?.matches ?? false;
 
 /**
- * The ink drawing of a breed (public/breeds/<id>.webp), multiplied into the ruled paper. If the file is
+ * The ink drawing of a breed (public/breeds/<id>.webp), multiplied into the paper. If the file is
  * missing or will not load, a plain ink paw stands in so the layout does not jump; it gets the same reveal
  * and settle, but no sniffing.
  */
@@ -59,7 +62,7 @@ export function BreedPortrait({ breed, size, play, idle = true }: BreedPortraitP
   const [failedFor, setFailedFor] = useState<BreedId | null>(null);
   const failed = failedFor === breed;
 
-  const animated = play && size !== 'sm' && !reduced;
+  const animated = play && size !== 'xs' && size !== 'sm' && !reduced;
   const sniffing = animated && idle && !failed;
 
   // Count the plays. A new play starts when the animation switches on or the breed changes while it is on;

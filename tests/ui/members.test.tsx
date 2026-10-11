@@ -228,7 +228,7 @@ describe('MembersScreen', () => {
       const removed = within(await screen.findByRole('region', { name: 'Removed' }));
       const olga = within(removed.getByText('Olga').closest('li')!);
       expect(olga.queryByRole('button')).toBeNull();
-      expect(removed.getByText('Olga').closest('li')).toHaveStyle({ opacity: '0.55' });
+      expect(removed.getByText('Olga').closest('li')).toHaveClass('soft'); // greyed in soft ink, which keeps its contrast
     });
 
     it('has no "Removed" section when nobody was removed', async () => {

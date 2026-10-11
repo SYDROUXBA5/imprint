@@ -12,7 +12,7 @@
  *
  * mix-blend-mode: multiply sits on the outer element. A transform or clip-path makes an element its own
  * stacking context, and a multiply inside one would blend with nothing and leave the paper-white box on
- * the cream page. The <img> keeps its own multiply for the still drawing; inside the group it is a no-op.
+ * the paper. The <img> keeps its own multiply for the still drawing; inside the group it is a no-op.
  */
 .breed-portrait {
   position: relative; display: inline-block; flex: none; line-height: 0; mix-blend-mode: multiply;

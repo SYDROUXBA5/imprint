@@ -1,11 +1,11 @@
 /* The 75-minute celebration, about 2.5 s in total. Timings follow the plan:
-   ring glow 0-400 ms, stamp 300-750, paws 700-1600, text from 900. */
+   bar glow 0-400 ms, stamp 300-750, paws 700-1600, text from 900. */
 
 .celebration {
   position: fixed; inset: 0; z-index: 100;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
   width: 100%; margin: 0; padding: 16px; border: 0; border-radius: 0;
-  background: rgba(245, 239, 220, 0.85); color: var(--ink);
+  background: rgba(245, 241, 230, 0.92); color: var(--ink);
   font: inherit; text-align: center; cursor: pointer;
   animation: celebration-in 200ms ease-out both;
 }
@@ -22,32 +22,23 @@
   display: block; max-width: 100%; opacity: 0; transform: scale(0);
   animation: celebration-splash 450ms cubic-bezier(.2, .9, .3, 1.2) 300ms both;
 }
-/* The stamp SVG already leans -8deg itself, so the wrapper starts 6deg further over (-14 in all) and settles at 0. */
+/* The hero stamp already leans -8deg itself, so the wrapper starts 6deg further over (-14 in all) and settles at 0. */
 .celebration-stamp {
   display: block; max-width: 100%;
   opacity: 0; animation: celebration-stamp 450ms cubic-bezier(.2, .9, .3, 1.2) 300ms both;
 }
 .celebration-text {
   display: block; max-width: 100%; padding: 0 8px;
-  font-size: 28px; font-weight: 800; line-height: 1.15; overflow-wrap: anywhere;
+  font-size: 32px; font-weight: 600; line-height: 1.15; overflow-wrap: anywhere;
   opacity: 0; animation: celebration-text 400ms ease-out 900ms both;
 }
 .celebration-hint {
   position: absolute; left: 0; right: 0; bottom: calc(24px + env(safe-area-inset-bottom));
-  font-size: 16px; font-weight: 700; opacity: 0;
+  font: 400 15px/1.3 var(--typed); opacity: 0;
   animation: celebration-hint 400ms ease-out 1800ms both;
 }
 
-/* The ring on the timer underneath glows while the overlay is arriving. */
-main[data-celebrating='true'] .compass-ring {
-  animation: celebration-ring 500ms ease-in-out 0s 2;
-}
-
 @keyframes celebration-in { from { opacity: 0; } to { opacity: 1; } }
-@keyframes celebration-ring {
-  0%, 100% { filter: drop-shadow(0 0 0 transparent); }
-  50% { filter: drop-shadow(0 0 12px var(--olive)); }
-}
 @keyframes celebration-stamp {
   0% { opacity: 0; transform: scale(2.4) rotate(-6deg); }
   60% { opacity: 1; transform: scale(0.92) rotate(0deg); }
@@ -70,7 +61,7 @@ main[data-celebrating='true'] .compass-ring {
 /* Reduce motion: nothing moves; the stamp and the text are simply there. */
 @media (prefers-reduced-motion: reduce) {
   .celebration, .celebration-stamp, .celebration-splash, .celebration-text, .celebration-hint,
-  main[data-celebrating='true'] .compass-ring { animation: none !important; }
+  .bar.is-glowing { animation: none !important; }
   .celebration-stamp, .celebration-text { opacity: 1; transform: none; }
   .celebration-splash { opacity: 0.22; transform: none; }
   .celebration-hint { opacity: 0.75; }

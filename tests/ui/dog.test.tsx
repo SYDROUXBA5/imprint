@@ -165,16 +165,33 @@ describe('DogScreen', () => {
     expect(await screen.findByRole('button', { name: 'Explosives' })).toHaveAttribute('aria-pressed', 'true');
   });
 
-  it('shows the IMPRINTED stamp (no fraction) at 75 min and "42/75" with a 56% bar below it', async () => {
+  it('shows the IMPRINTED stamp (no fraction) at 75 min and "42:00 / 75:00" with a 56% bar below it', async () => {
     await seed();
     renderDog();
     const cocaine = (await screen.findByText('Cocaine')).closest('li')!;
     expect(within(cocaine).getByRole('img', { name: 'Imprinted' })).toBeInTheDocument();
-    expect(within(cocaine).queryByText(/\/75/)).toBeNull();
+    expect(within(cocaine).queryByText(/75:00/)).toBeNull();
     const mdma = screen.getByText('MDMA').closest('li')!;
-    expect(within(mdma).getByText('42/75')).toBeInTheDocument();
+    expect(within(mdma).getByText('42:00')).toBeInTheDocument();
+    expect(within(mdma).getByText('/ 75:00')).toBeInTheDocument();
     expect(within(mdma).queryByRole('img', { name: 'Imprinted' })).toBeNull();
     expect(within(mdma).getByRole('progressbar', { name: 'MDMA' })).toHaveAttribute('aria-valuenow', '56');
+  });
+
+  it('says "not started" for an odour with no time, with an empty ruled bar', async () => {
+    await seed();
+    renderDog();
+    const heroin = (await screen.findByText('Heroin')).closest('li')!;
+    expect(within(heroin).getByText('not started')).toBeInTheDocument();
+    expect(within(heroin).queryByText(/75:00/)).toBeNull();
+    const bar = within(heroin).getByRole('progressbar', { name: 'Heroin' });
+    expect(bar).toHaveAttribute('aria-valuenow', '0');
+    expect(bar.querySelector('[data-bar-logged]')).toBeNull();
+    expect(bar.querySelector('[data-bar-live]')).toBeNull();
+    // the logged odour draws its moss fill
+    const mdma = within(screen.getByText('MDMA').closest('li')!);
+    expect(mdma.getByRole('progressbar', { name: 'MDMA' }).querySelector('[data-bar-logged]')).not.toBeNull();
+    expect(mdma.queryByText('not started')).toBeNull();
   });
 
   it('opens an odour\'s timer and the dog\'s log', async () => {
@@ -198,11 +215,12 @@ describe('DogScreen', () => {
     expect(screen.getByTestId('where')).toHaveTextContent(/^\/team\/t1$/);
   });
 
-  it('shows the dog\'s breed drawing, breed and purpose under its name', async () => {
+  it('shows the dog\'s breed drawing as a plate, with the breed, purpose and team in a caption row', async () => {
     await seed();
     await db.dogs.update('d1', { breed: 'malinois', purpose: 'dual' });
     renderDog();
-    expect(await screen.findByText('Malinois · Dual purpose')).toBeInTheDocument();
+    expect(await screen.findByText('Malinois')).toBeInTheDocument();
+    expect(screen.getByText(/^dual purpose · \S/)).toBeInTheDocument();
     const portrait = screen.getByRole('img', { name: 'Malinois' }).closest('[data-breed-portrait]')!;
     expect(portrait).toHaveAttribute('data-size', 'md');
     expect(portrait).toHaveAttribute('data-play', 'true'); // plays once on open
@@ -308,7 +326,9 @@ describe('DogScreen', () => {
         expect(dialog.getByRole('img', { name: 'Bloodhound' }).closest('[data-breed-portrait]')).toHaveAttribute('data-play', 'true');
         await userEvent.click(dialog.getByRole('button', { name: 'Dual purpose' }));
         await userEvent.click(dialog.getByRole('button', { name: 'Save dog' }));
-        expect(await screen.findByText('Bloodhound · Dual purpose')).toBeInTheDocument();
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        expect(screen.getByText('Bloodhound')).toBeInTheDocument(); // the caption row under the plate
+        expect(screen.getByText(/^dual purpose · /)).toBeInTheDocument();
         expect(await db.dogs.get('d1')).toMatchObject({ breed: 'bloodhound', purpose: 'dual', name: 'Rex', team_id: 't1' });
       });
 
@@ -394,10 +414,10 @@ describe('DogScreen', () => {
       await seed(trainer, [running('r', 'heroin', '2026-10-05T10:00:00Z'), manual('h', 'heroin', 41 * 60)]);
       renderDog();
       const heroin = (await screen.findByText('Heroin')).closest('li')!;
-      expect(within(heroin).getByText('41/75')).toBeInTheDocument();
+      expect(within(heroin).getByText('41:00')).toBeInTheDocument();
       await waitFor(() => expect(tickers(spy).length).toBeGreaterThan(0)); // the interval starts in an effect
       await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
-      expect(within(heroin).getByText('42/75')).toBeInTheDocument();
+      expect(within(heroin).getByText('42:00')).toBeInTheDocument();
     });
 
     it('does not tick for a timer running on another dog', async () => {
@@ -410,13 +430,14 @@ describe('DogScreen', () => {
     });
   });
 
-  it('marks the running odour with a dot that screen readers skip', async () => {
-    await seed(trainer, [running('r', 'heroin', new Date().toISOString())]);
+  it('marks the running odour with a RUNNING tag, and draws the live time in the bar', async () => {
+    await seed(trainer, [running('r', 'heroin', new Date(Date.now() - 600_000).toISOString())]);
     renderDog();
     const heroin = (await screen.findByText('Heroin')).closest('li')!;
-    const dot = within(heroin).getByTestId('running-dot');
-    expect(dot).toHaveAttribute('aria-hidden', 'true');
-    expect(within(heroin).getByText('Running')).toBeInTheDocument();
-    expect(within(screen.getByText('Cocaine').closest('li')!).queryByTestId('running-dot')).toBeNull();
+    expect(within(heroin).getByTestId('running-tag')).toHaveTextContent('Running');
+    expect(within(heroin).getByRole('progressbar', { name: 'Heroin' }).querySelector('[data-bar-live]')).not.toBeNull();
+    const cocaine = within(screen.getByText('Cocaine').closest('li')!);
+    expect(cocaine.queryByTestId('running-tag')).toBeNull();
+    expect(cocaine.getByRole('progressbar', { name: 'Cocaine' }).querySelector('[data-bar-live]')).toBeNull();
   });
 });

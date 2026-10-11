@@ -8,14 +8,14 @@ import { useMe } from '../../hooks/useMe';
 import { useNow } from '../../hooks/useNow';
 import { useRunningItems, useRunningTeamIds } from '../../hooks/useRunningItems';
 import { useUnitData } from '../../hooks/useUnitData';
-import { Card } from '../components/Card';
-import { DogDrawing } from '../components/DogDrawing';
-import { HeaderBar } from '../components/HeaderBar';
+import { Capacity } from '../components/Capacity';
+import { ForwardChevron } from '../components/icons';
+import { Masthead } from '../components/Masthead';
 import { RunningBanner } from '../components/RunningBanner';
 import { Sheet } from '../components/Sheet';
 import { SyncBadge } from '../components/SyncBadge';
 import { NewTeamSheet } from './NewTeamSheet';
-import { dogCountText, linkButton, plural } from '../shared';
+import { plural } from '../shared';
 
 const NO_SYNC = { pending: 0, rejected: 0, stale: false };
 
@@ -47,97 +47,82 @@ export function TeamsScreen() {
 
   return (
     <div className="screen">
-      <HeaderBar title="Teams" />
+      <Masthead />
+
+      <button type="button" className="who" style={{ minHeight: 46 }} aria-label={`${me.name} · Switch`} onClick={switchOrAsk}>
+        <span className="who-name" data-role={`, ${me.role}`}>{me.name}</span>
+        <span className="sr-only"> &middot; </span>
+        <span className="who-switch">Switch</span>
+      </button>
+
       <RunningBanner items={running} />
-      <SyncBadge {...sync} />
+
       {notices.map((n) => (
-        <div key={n} role="status" style={{
-          margin: '8px 16px', padding: '8px 12px', border: '1.5px solid var(--ink)', borderRadius: 10,
-          background: 'var(--paper)', display: 'flex', alignItems: 'center', gap: 8, fontWeight: 700,
-        }}>
+        <div key={n} role="status" className="note" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ flex: 1 }}>{n}</span>
-          <button type="button" className="btn" onClick={() => setNotices((prev) => prev.filter((x) => x !== n))}>
+          <button type="button" className="btn btn-sm" onClick={() => setNotices((prev) => prev.filter((x) => x !== n))}>
             Dismiss
           </button>
         </div>
       ))}
 
-      <main className="pad">
-        <p style={{ margin: '0 0 4px', textAlign: 'center', fontWeight: 800, letterSpacing: 1.5, textTransform: 'uppercase' }}>
-          Trainer&rsquo;s field guide
-        </p>
-        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}>
-          <button type="button" onClick={switchOrAsk} style={{
-            minHeight: 44, maxWidth: '100%', padding: '0 12px', background: 'none', border: 0, color: 'var(--ink)',
-            fontSize: 17, fontWeight: 800, textDecoration: 'underline', overflowWrap: 'anywhere',
-          }}>
-            {me.name} · Switch
-          </button>
-        </div>
-
-        {isTrainer && (
-          <button type="button" className="btn btn-primary" style={{ width: '100%', marginBottom: 12 }}
-            onClick={() => setCreating(true)}>
-            + New team
-          </button>
-        )}
-        {isTrainer && (
-          <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-            <Link to="/members" className="btn" style={{ flex: 1 }}>Members</Link>
-            <Link to="/odours" className="btn" style={{ flex: 1 }}>Odours</Link>
-          </div>
-        )}
+      <main className="page">
+        <h1 className="caps" style={{ margin: '20px 0 0', letterSpacing: '0.14em' }}>Teams</h1>
 
         {!loading && teams.length === 0 && (
-          <div style={{ display: 'grid', justifyItems: 'center', gap: 8, padding: '24px 0', textAlign: 'center' }}>
-            <DogDrawing />
-            <h2 style={{ fontSize: 22 }}>No teams yet</h2>
-            {isTrainer && <p style={{ margin: 0 }}>Create your first team</p>}
+          <div style={{ padding: '24px 0', textAlign: 'center' }}>
+            <h2 style={{ fontSize: 24 }}>No teams yet</h2>
+            {isTrainer && <p className="italic">Create your first team</p>}
           </div>
         )}
 
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
+        <ul className="rows">
           {teams.map((t) => {
             const count = dogs.filter((d) => d.team_id === t.id).length;
             return (
               <li key={t.id}>
-                <Card onClick={() => navigate(`/team/${t.id}`)}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 12, minHeight: 56 }}>
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: 'block', fontSize: 26, fontWeight: 800, overflowWrap: 'anywhere' }}>{t.name}</span>
-                      <span className="num" style={{ display: 'block' }}>{dogCountText(count, t.planned_dogs)}</span>
-                    </span>
-                    {runningTeams.has(t.id) && (
-                      <span role="img" aria-label="Timer running" style={{
-                        width: 14, height: 14, flex: 'none', borderRadius: '50%', background: 'var(--stamp)',
-                      }} />
-                    )}
+                <button type="button" className="row-btn" style={{ minHeight: 60 }} onClick={() => navigate(`/team/${t.id}`)}>
+                  <span style={{ flex: 1, minWidth: 0 }}>
+                    <span style={{ display: 'block', fontSize: 30, fontWeight: 600, lineHeight: 1.05, overflowWrap: 'anywhere' }}>{t.name}</span>
+                    <span style={{ display: 'block', marginTop: 6 }}><Capacity count={count} planned={t.planned_dogs} /></span>
                   </span>
-                </Card>
+                  {runningTeams.has(t.id) && <span role="img" aria-label="Timer running" className="tag">Live</span>}
+                  <ForwardChevron />
+                </button>
               </li>
             );
           })}
         </ul>
 
-        {isTrainer && archivedCount > 0 && (
-          <Link to="/archived" style={{ ...linkButton, marginTop: 16, textDecoration: 'underline' }}>
-            {`Archived (${archivedCount})`}
-          </Link>
+        {isTrainer && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 18 }}>
+            <button type="button" className="btn btn-primary" aria-label="+ New team" onClick={() => setCreating(true)}>
+              New team
+            </button>
+            <div className="btn-row" style={{ display: 'grid', gridTemplateColumns: `repeat(${archivedCount > 0 ? 3 : 2}, minmax(0, 1fr))`, gap: 8 }}>
+              <Link to="/members" className="btn">Members</Link>
+              <Link to="/odours" className="btn">Odours</Link>
+              {archivedCount > 0 && (
+                <Link to="/archived" className="btn" aria-label={`Archived (${archivedCount})`}>{`Archived ${archivedCount}`}</Link>
+              )}
+            </div>
+          </div>
         )}
+
+        <SyncBadge {...sync} />
       </main>
 
       {isTrainer && <NewTeamSheet open={creating} onClose={() => setCreating(false)} catalogue={catalogue} />}
 
       <Sheet open={confirmSwitch} onClose={() => setConfirmSwitch(false)} title="Unsent work">
-        <p style={{ fontSize: 18 }}>
+        <p className="sheet-text">
           {`${me.name} still has ${plural(sync.pending, 'unsent item')} on this phone. Wait for signal and let it send before switching: once the phone is signed in under another name it cannot be sent.`}
         </p>
-        <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-          <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => setConfirmSwitch(false)}>
+        <div className="sheet-actions" style={{ flexDirection: 'column' }}>
+          <button type="button" className="btn btn-primary" onClick={() => setConfirmSwitch(false)}>
             {`Stay as ${me.name}`}
           </button>
-          <button type="button" className="btn" style={{ flex: 1 }}
-            onClick={() => { setConfirmSwitch(false); void switchName(); }}>
+          <button type="button" className="btn" onClick={() => { setConfirmSwitch(false); void switchName(); }}>
             Switch anyway
           </button>
         </div>

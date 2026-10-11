@@ -113,14 +113,14 @@ function Body({ team, catalogue, timerRunning, view, setView, onClose }: BodyPro
         <div style={{ marginTop: 12 }}>
           <OdourPicker categories={categories} odours={odours} selected={picked} onChange={setDraft} />
         </div>
-        {chosen.length === 0 && <p className="muted" style={{ margin: '0 0 4px', fontWeight: 700 }}>Pick at least one odour</p>}
+        {chosen.length === 0 && <p className="hint">Pick at least one odour</p>}
         {error && <p role="alert" className="error">{error}</p>}
         <div style={{ ...stickyFooter, display: 'grid', gap: 8 }}>
-          <button type="button" className="btn btn-primary" style={{ width: '100%' }}
+          <button type="button" className="btn btn-primary btn-block"
             disabled={chosen.length === 0 || busy} onClick={saveOdours}>
             Save odours
           </button>
-          <button type="button" className="btn" style={{ width: '100%' }}
+          <button type="button" className="btn btn-block"
             onClick={() => { setError(''); setDraft(null); setView('main'); }}>
             Back to settings
           </button>
@@ -132,13 +132,13 @@ function Body({ team, catalogue, timerRunning, view, setView, onClose }: BodyPro
   if (view === 'archive') {
     return (
       <div>
-        <p style={{ fontSize: 18, overflowWrap: 'anywhere' }}>
+        <p className="sheet-text">
           {`Archive ${team.name}? It and its dogs disappear for everyone; you can restore it from Archived.`}
         </p>
         {error && <p role="alert" className="error">{error}</p>}
-        <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-          <button type="button" className="btn" style={{ flex: 1 }} onClick={() => { setError(''); setView('main'); }}>Cancel</button>
-          <button type="button" className="btn btn-primary" style={{ flex: 1 }} disabled={busy} onClick={archive}>
+        <div className="sheet-actions">
+          <button type="button" className="btn" onClick={() => { setError(''); setView('main'); }}>Cancel</button>
+          <button type="button" className="btn btn-primary btn-danger" disabled={busy} onClick={archive}>
             {`Archive ${team.name}`}
           </button>
         </div>
@@ -151,8 +151,8 @@ function Body({ team, catalogue, timerRunning, view, setView, onClose }: BodyPro
       <form onSubmit={saveName}>
         <label className="label" htmlFor="team-settings-name">Team name</label>
         <input id="team-settings-name" className="field" value={name} autoComplete="off" onChange={(e) => setName(e.target.value)} />
-        <button type="submit" className="btn" disabled={busy || !name.trim() || name.trim() === team.name}
-          style={{ width: '100%', marginTop: 12 }}>
+        <button type="submit" className="btn btn-block" disabled={busy || !name.trim() || name.trim() === team.name}
+          style={{ marginTop: 12 }}>
           Save name
         </button>
       </form>
@@ -160,15 +160,15 @@ function Body({ team, catalogue, timerRunning, view, setView, onClose }: BodyPro
       {/* noValidate: the field says what is wrong in its own words, not in the browser's bubble. */}
       <form onSubmit={saveDogs} noValidate>
         <PlannedDogsField id="team-settings-dogs" text={dogs.text} onChange={dogs.setText} showError={dogs.showError} inputRef={dogs.input} />
-        <button type="submit" className="btn" disabled={busy || dogs.text.trim() === savedDogs}
-          style={{ width: '100%', marginTop: 12 }}>
+        <button type="submit" className="btn btn-block" disabled={busy || dogs.text.trim() === savedDogs}
+          style={{ marginTop: 12 }}>
           Save number of dogs
         </button>
       </form>
 
       <p className="label">Odours</p>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <span className="num" style={{ fontWeight: 800 }}>{`${plural(savedCount, 'odour')} selected`}</span>
+        <span className="num" style={{ fontWeight: 700, fontSize: 15 }}>{`${plural(savedCount, 'odour')} selected`}</span>
         <button type="button" className="btn" onClick={() => { setError(''); setView('odours'); }}>Choose odours</button>
       </div>
 
@@ -184,8 +184,7 @@ function Body({ team, catalogue, timerRunning, view, setView, onClose }: BodyPro
       )}
 
       {error && <p role="alert" className="error">{error}</p>}
-      <button type="button" className="btn" onClick={askToArchive}
-        style={{ width: '100%', marginTop: 24, color: 'var(--stamp)', borderColor: 'var(--stamp)' }}>
+      <button type="button" className="btn btn-block btn-danger" onClick={askToArchive} style={{ marginTop: 28 }}>
         Archive team
       </button>
     </div>

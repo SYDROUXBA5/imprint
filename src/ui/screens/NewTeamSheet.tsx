@@ -60,11 +60,11 @@ function NewTeamForm({ onClose, catalogue }: { onClose: () => void; catalogue: C
 
       <p className="label">Odours this team trains on</p>
       <OdourPicker categories={categories} odours={odours} selected={selected} onChange={setSelected} />
-      {chosen.length === 0 && <p className="muted" style={{ margin: '0 0 4px', fontWeight: 700 }}>Pick at least one odour</p>}
+      {chosen.length === 0 && <p className="hint">Pick at least one odour</p>}
 
       {error && <p role="alert" className="error">{error}</p>}
       <div style={stickyFooter}>
-        <button type="submit" className="btn btn-primary" disabled={!ready || busy} style={{ width: '100%' }}>
+        <button type="submit" className="btn btn-primary btn-block" disabled={!ready || busy}>
           Create team
         </button>
       </div>

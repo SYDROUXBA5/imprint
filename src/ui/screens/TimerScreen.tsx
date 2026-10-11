@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { db } from '../../data/db';
 import { AlreadyRunningError, startSession, stopSession } from '../../data/repo';
-import { formatClock, formatMinutesOfTarget } from '../../domain/format';
+import { formatMinutesOfTarget, formatTimeOfDay, formatTypedClock } from '../../domain/format';
 import { NOT_IN_CURRENT_LIST, isInTeamList, odourById, odourName } from '../../domain/odours';
 import { IMPRINT_TARGET_S, isRunning, liveElapsed, odourTotal } from '../../domain/totals';
 import type { Session } from '../../domain/types';
@@ -11,7 +11,9 @@ import { useMe } from '../../hooks/useMe';
 import { useNow } from '../../hooks/useNow';
 import { useUnitData } from '../../hooks/useUnitData';
 import { Celebration } from '../Celebration';
-import { CompassRing } from '../components/CompassRing';
+import { BreedPortrait } from '../components/BreedPortrait';
+import { HeaderBar } from '../components/HeaderBar';
+import { ProgressBar } from '../components/ProgressBar';
 import { ManualEntrySheet } from './ManualEntrySheet';
 
 export function TimerScreen() {
@@ -35,8 +37,8 @@ export function TimerScreen() {
   const runningHere = runningOnDog?.odour_id === odourId ? runningOnDog : undefined;
   const now = useNow(runningHere ? 1000 : null);
 
-  const total = odourTotal(sessions, corrections, dogId, odourId, now);
-  const [celebrate, dismissCelebration, celebrateNow] = useCrossedTarget(total, !loading);
+  const totalS = odourTotal(sessions, corrections, dogId, odourId, now);
+  const [celebrate, dismissCelebration, celebrateNow] = useCrossedTarget(totalS, !loading);
 
   if (loading || !me) return null;
   if (!dog) return <Navigate to="/" replace />;
@@ -49,7 +51,7 @@ export function TimerScreen() {
 
   const canStop = !!runningHere && runningHere.handler_id === me.id; // only the handler who started it can stop it
   const blocked = !!runningOnDog && !canStop;
-  const sessionClock = formatClock(runningHere ? liveElapsed(runningHere, corrections, now) : 0);
+  const sessionClock = formatTypedClock(runningHere ? liveElapsed(runningHere, corrections, now) : 0);
   const ctx = { db, me };
 
   const back = () =>
@@ -82,74 +84,81 @@ export function TimerScreen() {
     }
   }
 
+  const total = Math.max(0, totalS);
+  const doneMin = Math.floor(total / 60);
+  const targetMin = IMPRINT_TARGET_S / 60;
+  const liveS = runningHere ? liveElapsed(runningHere, corrections, now) : 0;
+  const loggedMin = Math.floor(Math.max(0, total - liveS) / 60);
+
   return (
     <div className="screen">
-      <div style={{ padding: 'env(safe-area-inset-top) 8px 0' }}>
-        <button type="button" aria-label="Back" onClick={back}
-          style={{ width: 'var(--tap)', background: 'none', border: 0, padding: 0, display: 'grid', placeItems: 'center' }}>
-          <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="var(--ink)"
-            strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-            <path d="M23 14H5M13 6l-8 8 8 8" />
-          </svg>
-        </button>
-      </div>
-      <main className="pad" data-celebrating={celebrate ? 'true' : 'false'}
-        style={{ display: 'grid', justifyItems: 'center', gap: 16, textAlign: 'center' }}>
-        <header>
-          <h1 style={{ fontSize: 36, lineHeight: 1.1, overflowWrap: 'anywhere' }}>
-            <span aria-hidden="true">•</span> {dog.name} <span aria-hidden="true">•</span>
-          </h1>
-          <h2 style={{ fontSize: 40, lineHeight: 1.1, overflowWrap: 'anywhere' }}>{odour.name}</h2>
-          {!isInTeamList(dog.team_id, odour.id, catalogue) && (
-            <p className="muted" style={{ margin: '4px 0 0', fontWeight: 800 }}>{NOT_IN_CURRENT_LIST}</p>
+      <HeaderBar title={odour.name} onBack={back} />
+      <main className="page" data-celebrating={celebrate ? 'true' : 'false'}>
+        {!isInTeamList(dog.team_id, odour.id, catalogue) && (
+          <p className="hint" style={{ margin: '6px 0 0' }}>{NOT_IN_CURRENT_LIST}</p>
+        )}
+
+        <div className="band strip">
+          <span className="strip-face"><BreedPortrait breed={dog.breed} size="xs" play={false} /></span>
+          <div style={{ minWidth: 0 }}>
+            <h2>{dog.name}</h2>
+            <p>
+              {runningHere?.started_at
+                ? `started ${formatTimeOfDay(runningHere.started_at)} by ${nameOf(runningHere.handler_id)}`
+                : 'not running'}
+            </p>
+          </div>
+        </div>
+
+        <div className="session">
+          <div className="caps">This session</div>
+          <div data-testid="session-clock" className="numerals" style={{ ['--chars' as string]: sessionClock.length }}>
+            {sessionClock}
+          </div>
+        </div>
+
+        <div className="timer-progress">
+          <div className="timer-progress-head">
+            <b>{`${doneMin} of ${targetMin} minutes`}</b>
+            <i>{doneMin >= targetMin ? 'imprinted' : `${targetMin - doneMin} to go`}</i>
+          </div>
+          <ProgressBar valueS={total} liveS={liveS} size="large" glowing={celebrate} label="Progress toward 75 minutes" />
+          <div className="bar-scale" aria-hidden="true">
+            {[0, 15, 30, 45, 60, 75].map((m) => <span key={m}>{m}</span>)}
+          </div>
+          <div className="bar-legend">
+            <span><i style={{ background: 'var(--moss)' }} />{`logged before, ${loggedMin} min`}</span>
+            <span><i style={{ background: 'var(--brass)' }} />{`now, ${Math.floor(liveS / 60)} min`}</span>
+          </div>
+        </div>
+
+        <div className="timer-actions">
+          {blocked && runningOnDog && (
+            <div role="status">
+              <p className="sheet-text" style={{ margin: 0 }}>{alreadyRunning(runningOnDog)}</p>
+              {runningOnDog.handler_id === me.id && !runningHere && (
+                <Link to={`/dog/${dog.id}/timer/${runningOnDog.odour_id}`} className="btn-text" style={{ padding: 0 }}>
+                  {`Open the ${odourById(odours, runningOnDog.odour_id)?.name ?? 'running'} timer`}
+                </Link>
+              )}
+            </div>
           )}
-        </header>
+          {error && <p role="alert" className="error" style={{ margin: 0 }}>{error}</p>}
+          {addedS !== null && !runningHere && (
+            <p role="status" className="num" style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>
+              {`+${Math.floor(addedS / 60)} min · now ${formatMinutesOfTarget(total)}`}
+            </p>
+          )}
 
-        <CompassRing totalS={total}>
-          <div>
-            <div data-testid="session-clock" className="num"
-              style={{ fontSize: sessionClock.length > 5 ? 44 : 64, fontWeight: 800, lineHeight: 1 }}>
-              {sessionClock}
-            </div>
-            <div className="num" style={{ marginTop: 8, fontSize: 16, fontWeight: 800 }}>
-              {`${Math.floor(total / 60)} / ${IMPRINT_TARGET_S / 60} min total`}
-            </div>
-          </div>
-        </CompassRing>
-
-        {canStop ? (
-          <button type="button" className="btn btn-primary" onClick={stop} disabled={busy}
-            style={{ width: '100%', minHeight: 64, fontSize: 28 }}>
-            Stop
+          {canStop ? (
+            <button type="button" className="btn btn-primary btn-start" onClick={stop} disabled={busy}>Stop</button>
+          ) : (
+            <button type="button" className="btn btn-primary btn-start" onClick={start} disabled={busy || blocked}>Start</button>
+          )}
+          <button type="button" className="btn btn-second" onClick={() => setManualOpen(true)}>
+            Add a session I forgot to time
           </button>
-        ) : (
-          <button type="button" className="btn btn-primary" onClick={start} disabled={busy || blocked}
-            style={{ width: '100%', minHeight: 64, fontSize: 28 }}>
-            Start
-          </button>
-        )}
-
-        {blocked && runningOnDog && (
-          <div role="status">
-            <p style={{ margin: 0, fontWeight: 800 }}>{alreadyRunning(runningOnDog)}</p>
-            {runningOnDog.handler_id === me.id && !runningHere && (
-              <Link to={`/dog/${dog.id}/timer/${runningOnDog.odour_id}`} style={{ fontWeight: 800 }}>
-                {`Open the ${odourById(odours, runningOnDog.odour_id)?.name ?? 'running'} timer`}
-              </Link>
-            )}
-          </div>
-        )}
-        {error && <p role="alert" className="error" style={{ margin: 0 }}>{error}</p>}
-        {addedS !== null && !runningHere && (
-          <p role="status" className="num" style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>
-            {`+${Math.floor(addedS / 60)} min · now ${formatMinutesOfTarget(total)}`}
-          </p>
-        )}
-
-        <button type="button" onClick={() => setManualOpen(true)}
-          style={{ background: 'none', border: 0, padding: '0 8px', fontSize: 17, fontWeight: 800, textDecoration: 'underline' }}>
-          Add a session I forgot to time
-        </button>
+        </div>
       </main>
       <ManualEntrySheet open={manualOpen} onClose={() => setManualOpen(false)}
         dogId={dog.id} odourId={odour.id} onCrossed={celebrateNow} />

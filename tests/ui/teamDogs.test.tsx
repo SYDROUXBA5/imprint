@@ -74,6 +74,25 @@ describe('TeamDogsScreen', () => {
       expect(screen.queryByText('2 dogs')).toBeNull();
     });
 
+    it('draws the dots, counts the team\'s odours and says how many places are left', async () => {
+      await seed(trainer);
+      await db.teams.update('t1', { planned_dogs: 6 });
+      renderTeam();
+      const dots = await screen.findByTestId('capacity-dots');
+      expect(dots.querySelectorAll('.dot-filled')).toHaveLength(2);
+      expect(dots.querySelectorAll('.dot:not(.dot-filled)')).toHaveLength(4);
+      expect(screen.getByText('Four more places in this team.')).toBeInTheDocument();
+      expect(screen.getByText(/^\d+ odours?$/)).toBeInTheDocument();
+    });
+
+    it('has no dots and no places-left line for a team with no planned size', async () => {
+      await seed(trainer);
+      renderTeam();
+      await screen.findByText('2 dogs');
+      expect(screen.queryByTestId('capacity-dots')).toBeNull();
+      expect(screen.queryByText(/more places? in this team/)).toBeNull();
+    });
+
     it('says "2 dogs" for a team with no planned size, and "1 dog" for one dog', async () => {
       await seed(trainer);
       renderTeam();
@@ -141,20 +160,24 @@ describe('TeamDogsScreen', () => {
     expect(screen.queryByText('Old Max')).toBeNull(); // archived
   });
 
-  it('shows each dog with its breed drawing, "Breed · Purpose" and a progress line', async () => {
+  it('shows each dog with its breed drawing, breed, purpose, an IMPRINTED stamp and a status line', async () => {
     await seed(trainer);
     renderTeam();
     const rex = within(await screen.findByRole('button', { name: /Rex/ }));
     expect(rex.getByText('Rex')).toBeInTheDocument();
-    expect(rex.getByText('Malinois · Dual purpose')).toBeInTheDocument();
-    expect(rex.getByText('MDMA 42/75 · Cocaine ✓')).toBeInTheDocument();
+    expect(rex.getByText('Malinois')).toBeInTheDocument();
+    expect(rex.getByText('dual purpose')).toBeInTheDocument();
+    expect(rex.getByText('1 imprinted')).toBeInTheDocument(); // Cocaine is at 75
+    expect(rex.getByText('MDMA 42:00')).toBeInTheDocument();
     const drawing = rex.getByRole('img', { name: 'Malinois' });
     expect(drawing).toHaveAttribute('src', `${import.meta.env.BASE_URL}breeds/malinois.webp`);
     expect(drawing.closest('[data-breed-portrait]')).toHaveAttribute('data-size', 'sm');
     expect(drawing.closest('[data-breed-portrait]')).toHaveAttribute('data-play', 'false');
     const bella = within(screen.getByRole('button', { name: /Bella/ }));
-    expect(bella.getByText('Labrador · Single purpose')).toBeInTheDocument();
-    expect(bella.getByText('TNT 18/75')).toBeInTheDocument();
+    expect(bella.getByText('Labrador')).toBeInTheDocument();
+    expect(bella.getByText('single purpose')).toBeInTheDocument();
+    expect(bella.getByText('TNT 18:00')).toBeInTheDocument();
+    expect(bella.queryByText(/imprinted/)).toBeNull();
   });
 
   it('says "Nothing logged yet" for a dog with no time', async () => {
@@ -164,13 +187,13 @@ describe('TeamDogsScreen', () => {
     expect(within(await screen.findByRole('button', { name: /Rex/ })).getByText('Nothing logged yet')).toBeInTheDocument();
   });
 
-  it('names the odours of a progress line and a running timer from the catalogue', async () => {
+  it('names the odours of a status line and a running timer from the catalogue', async () => {
     await seed(trainer);
     await db.odours.update('mdma', { name: 'Ecstasy' });
     await db.sessions.put(running('r', 'd2'));
     renderTeam();
-    expect(await screen.findByText('Ecstasy 42/75 · Cocaine ✓')).toBeInTheDocument();
-    expect(await screen.findByText(/^Running · Bella · Ecstasy · /)).toBeInTheDocument();
+    expect(await screen.findByText('Ecstasy 42:00')).toBeInTheDocument();
+    expect(await screen.findByText(/^Running 12:0[4-9] · Ecstasy$/)).toBeInTheDocument();
   });
 
   it('opens the dog screen on tap', async () => {
@@ -180,12 +203,13 @@ describe('TeamDogsScreen', () => {
     expect(screen.getByTestId('where')).toHaveTextContent('/dog/d1');
   });
 
-  it('pins only this team\'s running timers at the top', async () => {
+  it('tags only this team\'s running dogs, with the time and the odour', async () => {
     await seed(trainer);
     await db.sessions.bulkPut([running('r1', 'd1'), running('r2', 'd4')]);
     renderTeam();
-    expect(await screen.findByText(/^Running · Rex · MDMA · 12:0[4-9] · Paul$/)).toBeInTheDocument();
-    expect(screen.queryByText(/Running · Fly/)).toBeNull();
+    const rex = within(await screen.findByRole('button', { name: /Rex/ }));
+    expect(await rex.findByText(/^Running 12:0[4-9] · MDMA$/)).toBeInTheDocument();
+    expect(screen.getAllByText(/^Running /)).toHaveLength(1); // Fly runs in another team
   });
 
   it('sends you home when the team is archived or unknown', async () => {
@@ -285,7 +309,9 @@ describe('TeamDogsScreen', () => {
       expect(await db.dogs.filter((d) => d.name === 'Ziggy').first())
         .toMatchObject({ team_id: 't1', breed: 'bloodhound', purpose: 'single' });
       expect((await db.outbox.toArray()).map((i) => `${i.table}:${i.op}`)).toEqual(['dogs:insert']);
-      expect(within(screen.getByRole('button', { name: /Ziggy/ })).getByText('Bloodhound · Single purpose')).toBeInTheDocument();
+      const ziggy = within(screen.getByRole('button', { name: /Ziggy/ }));
+      expect(ziggy.getByText('Bloodhound')).toBeInTheDocument();
+      expect(ziggy.getByText('single purpose')).toBeInTheDocument();
     });
 
     it('opens empty again after a dog was added', async () => {

@@ -12,10 +12,7 @@ export function UnsyncedNote() {
   const n = sync.pending + sync.rejected;
   if (n === 0) return null;
   return (
-    <p role="status" style={{
-      margin: '0 0 10px', padding: '8px 12px', border: '1.5px solid var(--ink)', borderRadius: 10,
-      background: 'var(--paper)', fontWeight: 700,
-    }}>
+    <p role="status" className="note" style={{ margin: '0 0 10px' }}>
       {n === 1
         ? '1 item not synced yet. It is in this export, but other phones will not have it until this phone has signal.'
         : `${n} items not synced yet. They are in this export, but other phones will not have them until this phone has signal.`}
@@ -26,9 +23,17 @@ export function UnsyncedNote() {
 /**
  * Makes a file on the phone and hands it to the share sheet (or downloads it). Trainer screens only.
  * Each button warns about unsynced items above itself; where several sit together, pass `note={false}` to
- * all of them and put one <UnsyncedNote /> above the group.
+ * all of them and put one <UnsyncedNote /> above the group. It renders a fragment, so it can sit in a grid:
+ * the messages under the button take the full row (`.span-all`). `shortLabel` is what is printed on the button
+ * when the room is tight; `label` stays its accessible name.
  */
-export function ExportButton({ label, run, note = true }: { label: string; run: () => Promise<ExportDone>; note?: boolean }) {
+export function ExportButton({ label, shortLabel, run, note = true, block = true }: {
+  label: string;
+  shortLabel?: string;
+  run: () => Promise<ExportDone>;
+  note?: boolean;
+  block?: boolean;
+}) {
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
@@ -48,13 +53,14 @@ export function ExportButton({ label, run, note = true }: { label: string; run: 
   }
 
   return (
-    <div>
+    <>
       {note && <UnsyncedNote />}
-      <button type="button" className="btn" style={{ width: '100%' }} disabled={busy} onClick={click}>
-        {busy ? 'Preparing…' : label}
+      <button type="button" className={`btn${block ? ' btn-block' : ''}`} disabled={busy} onClick={click}
+        aria-label={!busy && shortLabel ? label : undefined}>
+        {busy ? 'Preparing…' : shortLabel ?? label}
       </button>
-      {saved && <p role="status" style={{ margin: '8px 0 0', fontWeight: 700 }}>Saved to your downloads.</p>}
-      {error && <p role="alert" className="error">{error}</p>}
-    </div>
+      {saved && <p role="status" className="hint span-all">Saved to your downloads.</p>}
+      {error && <p role="alert" className="error span-all">{error}</p>}
+    </>
   );
 }

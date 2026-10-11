@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from 'react';
+import { useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { needsClockCheck, overlappingSessionIds } from '../../domain/flags';
 import { formatClock, formatDay, formatMinSec, localDate } from '../../domain/format';
@@ -12,19 +12,13 @@ import { useUnitData } from '../../hooks/useUnitData';
 import { HeaderBar } from '../components/HeaderBar';
 import { CorrectionSheet } from './CorrectionSheet';
 
-const pill: CSSProperties = {
-  display: 'inline-block', padding: '2px 10px', border: '1.5px solid var(--ink)', borderRadius: 999,
-  fontSize: 14, fontWeight: 800, background: 'var(--paper)',
-};
-const flagPill: CSSProperties = { ...pill, background: 'var(--mustard)' };
-
 /** Newest first. A timed session sorts by when it started, a manual one by its date. */
 const sortKey = (s: Session) => s.started_at ?? s.session_date;
 
 const dayOf = (iso: string) => formatDay(localDate(new Date(iso)), false);
 
 /** Beside an odour name: it is not in the team's current list any more. */
-const Marker = () => <span className="muted" style={{ marginLeft: 6, fontSize: 14, fontWeight: 700 }}>{NOT_IN_CURRENT_LIST}</span>;
+const Marker = () => <span className="num soft" style={{ marginLeft: 6, fontSize: 13 }}>{NOT_IN_CURRENT_LIST}</span>;
 
 interface Editing { session: Session; mode: 'correct' | 'void' }
 
@@ -67,19 +61,16 @@ export function LogScreen() {
   return (
     <div className="screen">
       <HeaderBar title="Log" onBack={() => navigate(`/dog/${dog.id}`)} />
-      <main className="pad">
-        <h2 style={{ fontSize: 24, overflowWrap: 'anywhere' }}>{dog.name}</h2>
+      <main className="page">
+        <h2 className="band" style={{ marginTop: 8, fontSize: 28, overflowWrap: 'anywhere' }}>{dog.name}</h2>
 
         {totals.length > 0 && (
-          <section aria-label="Totals" style={{ marginTop: 12 }}>
-            <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          <section aria-label="Totals">
+            <ul className="rows">
               {totals.map((t) => (
-                <li key={t.odourId} style={{
-                  display: 'flex', gap: 8, alignItems: 'baseline', padding: '6px 12px',
-                  border: '1.5px solid var(--ink)', borderRadius: 'var(--radius)', background: 'var(--paper)',
-                }}>
-                  <span style={{ fontWeight: 800 }}>{t.name}{notListed(t.odourId) && <Marker />}</span>
-                  <span className="num">{formatMinSec(t.totalS)}</span>
+                <li key={t.odourId} style={{ display: 'flex', gap: 8, alignItems: 'baseline', justifyContent: 'space-between', padding: '8px 0' }}>
+                  <span style={{ fontSize: 20, fontWeight: 600, overflowWrap: 'anywhere' }}>{t.name}{notListed(t.odourId) && <Marker />}</span>
+                  <span className="num" style={{ fontWeight: 700 }}>{formatMinSec(t.totalS)}</span>
                 </li>
               ))}
             </ul>
@@ -97,12 +88,10 @@ export function LogScreen() {
         )}
 
         {dogSessions.length === 0 && (
-          <p style={{ marginTop: 24, textAlign: 'center', fontWeight: 800 }}>Nothing logged yet</p>
+          <p className="italic soft" style={{ marginTop: 24, textAlign: 'center', fontSize: 20 }}>Nothing logged yet</p>
         )}
 
-        <ul aria-label="Sessions" style={{
-          listStyle: 'none', margin: '16px 0 0', padding: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12,
-        }}>
+        <ul aria-label="Sessions" className="rows" style={{ marginTop: 12 }}>
           {shown.map((s) => (
             <LogRow key={s.id} session={s} corrections={corrections} now={now} nameOf={nameOf} odourLabel={odourName(odours, s.odour_id)}
               notListed={notListed(s.odour_id)} flagged={overlapping.has(s.id)} isTrainer={isTrainer}
@@ -141,25 +130,23 @@ function LogRow({ session: s, corrections, now, nameOf, odourLabel: odour, notLi
   const current = currentDuration(s, corrections);
 
   return (
-    <li style={{
-      padding: 12, border: '1.5px solid var(--ink)', borderRadius: 'var(--radius)', background: 'var(--paper)',
-    }}>
+    <li style={{ padding: '12px 0 14px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 800 }}>{date}</div>
-          <div style={{ fontSize: 20, fontWeight: 800, overflowWrap: 'anywhere' }}>
+          <div className="num soft" style={{ fontSize: 14 }}>{date}</div>
+          <div style={{ fontSize: 22, fontWeight: 600, lineHeight: 1.15, overflowWrap: 'anywhere' }}>
             <span>{odour}{notListed && <Marker />}</span>
           </div>
-          <div>
+          <div className="italic">
             <span>{nameOf(s.handler_id)}</span>
           </div>
         </div>
-        <div className="num" style={{ fontSize: 22, fontWeight: 800, textAlign: 'right', flex: 'none' }}>
+        <div className="num" style={{ fontSize: 22, fontWeight: 700, textAlign: 'right', flex: 'none' }}>
           {running ? (
             <span data-testid="live-clock">{formatClock(liveElapsed(s, corrections, now))}</span>
           ) : correction ? (
             <>
-              <s style={{ fontSize: 16, fontWeight: 700, marginRight: 8, opacity: 0.75 }}>{formatClock(s.duration_s ?? 0)}</s>
+              <s className="soft" style={{ fontSize: 16, fontWeight: 400, marginRight: 8 }}>{formatClock(s.duration_s ?? 0)}</s>
               <span>{formatClock(current)}</span>
             </>
           ) : (
@@ -169,17 +156,17 @@ function LogRow({ session: s, corrections, now, nameOf, odourLabel: odour, notLi
       </div>
 
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-        <span style={pill}>{running ? 'Running' : s.kind === 'timed' ? 'Timed' : 'Manual'}</span>
+        <span className={`tag tag-plain${running ? ' tag-flag' : ''}`}>{running ? 'Running' : s.kind === 'timed' ? 'Timed' : 'Manual'}</span>
         {correction && !correction.void && (
-          <span style={pill}>{`Corrected by ${nameOf(correction.trainer_id)}, ${dayOf(correction.created_at)}`}</span>
+          <span className="tag tag-plain">{`Corrected by ${nameOf(correction.trainer_id)}, ${dayOf(correction.created_at)}`}</span>
         )}
-        {correction?.void && <span style={{ ...pill, color: 'var(--stamp)', borderColor: 'var(--stamp)' }}>Voided</span>}
-        {flagged && <span style={flagPill}>Overlap</span>}
-        {needsClockCheck(s) && <span style={flagPill}>Clock check</span>}
+        {correction?.void && <span className="tag tag-plain tag-void">Voided</span>}
+        {flagged && <span className="tag tag-plain tag-flag">Overlap</span>}
+        {needsClockCheck(s) && <span className="tag tag-plain tag-flag">Clock check</span>}
       </div>
 
       {correction && (
-        <p style={{ margin: '8px 0 0', overflowWrap: 'anywhere' }}>
+        <p className="num" style={{ margin: '8px 0 0', fontSize: 14, overflowWrap: 'anywhere' }}>
           {correction.void ? `By ${nameOf(correction.trainer_id)}, ${dayOf(correction.created_at)}. ` : ''}
           {`Reason: ${correction.reason}`}
         </p>
@@ -187,11 +174,11 @@ function LogRow({ session: s, corrections, now, nameOf, odourLabel: odour, notLi
 
       {isTrainer && (
         <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-          <button type="button" className="btn" style={{ flex: 1, fontSize: 16 }}
+          <button type="button" className="btn btn-sm" style={{ flex: 1 }}
             aria-label={`Correct ${odour} session of ${date}`} onClick={() => onEdit('correct')}>
             Correct
           </button>
-          <button type="button" className="btn" style={{ flex: 1, fontSize: 16 }}
+          <button type="button" className="btn btn-sm btn-danger" style={{ flex: 1 }}
             aria-label={`Void ${odour} session of ${date}`} onClick={() => onEdit('void')}>
             Void
           </button>

@@ -79,27 +79,20 @@ function DogForm({ onClose, teams, teamId, dog }: Omit<DogSheetProps, 'open'>) {
         {breed ? (
           <BreedPortrait key={choices} breed={breed} size="lg" play={choices > 0} />
         ) : (
-          <p className="muted" style={{ margin: 0, fontWeight: 800 }}>Choose a breed</p>
+          <p className="italic soft" style={{ margin: 0 }}>Choose a breed</p>
         )}
       </div>
-      <div role="group" aria-labelledby="breed-label" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
-        {BREEDS.map((b) => {
-          const selected = b.id === breed;
-          return (
-            <button key={b.id} type="button" aria-pressed={selected} onClick={() => { setBreed(b.id); setChoices((n) => n + 1); }}
-              style={{
-                padding: '4px 6px', border: '1.5px solid var(--ink)', borderRadius: 10, fontSize: 15, fontWeight: 800,
-                lineHeight: 1.15, background: selected ? 'var(--ink)' : 'var(--paper)',
-                color: selected ? 'var(--paper)' : 'var(--ink)',
-              }}>
-              {b.label}
-            </button>
-          );
-        })}
+      <div role="group" aria-labelledby="breed-label" className="choices" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}>
+        {BREEDS.map((b) => (
+          <button key={b.id} type="button" className="choice" aria-pressed={b.id === breed}
+            onClick={() => { setBreed(b.id); setChoices((n) => n + 1); }}>
+            {b.label}
+          </button>
+        ))}
       </div>
 
       <p className="label">Purpose</p>
-      <PillToggle label="Purpose" value={purpose} onChange={(p) => setPurpose(p as Purpose)}
+      <PillToggle label="Purpose" variant="choice" value={purpose} onChange={(p) => setPurpose(p as Purpose)}
         options={PURPOSES.map((p) => ({ value: p.id, label: p.label }))} />
 
       {dog && (
@@ -112,7 +105,7 @@ function DogForm({ onClose, teams, teamId, dog }: Omit<DogSheetProps, 'open'>) {
       )}
 
       {error && <p role="alert" className="error">{error}</p>}
-      <button type="submit" className="btn btn-primary" disabled={!ready || busy} style={{ width: '100%', marginTop: 16 }}>
+      <button type="submit" className="btn btn-primary btn-block" disabled={!ready || busy} style={{ marginTop: 20 }}>
         {dog ? 'Save dog' : 'Add dog'}
       </button>
     </form>

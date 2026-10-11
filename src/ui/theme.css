@@ -122,7 +122,8 @@ ul { margin: 0; padding: 0; }
 
 /* A typed, underlined text action. */
 .btn-text {
-  display: inline-flex; align-items: center; min-height: 44px; padding: 0 0 0 12px; background: none; border: 0;
+  display: inline-flex; align-items: center; justify-content: flex-end; min-width: 44px; min-height: 44px; padding: 0 0 0 12px;
+  background: none; border: 0;
   color: var(--ink); font: 700 15px/1.2 var(--typed); text-decoration: underline; text-underline-offset: 3px;
 }
 
@@ -265,6 +266,7 @@ textarea.field { padding: 12px 14px; }
   color: var(--ink); font: 700 14px/1.15 var(--typed);
 }
 .choice[aria-pressed='true'] { background: var(--ink); color: var(--paper); }
+@media (max-width: 359px) { .choice { padding-inline: 3px; font-size: 13px; } }
 
 /* ---------- Timer ---------- */
 

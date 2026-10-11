@@ -20,7 +20,7 @@ export function PlannedDogsField({ id, text, onChange, showError, inputRef }: Pl
       <input id={id} ref={inputRef} className="field" type="text" inputMode="numeric" enterKeyHint="done" autoComplete="off"
         required value={text} onChange={(e) => onChange(e.target.value)}
         aria-invalid={showError} aria-describedby={showError ? `${id}-help ${id}-error` : `${id}-help`} />
-      <p id={`${id}-help`} className="muted" style={{ margin: '4px 0 0', fontWeight: 700 }}>
+      <p id={`${id}-help`} className="hint">
         How many dogs this team will hold. It does not add dogs.
       </p>
       {showError && <p id={`${id}-error`} role="alert" className="error">{PLANNED_DOGS_MESSAGE}</p>}

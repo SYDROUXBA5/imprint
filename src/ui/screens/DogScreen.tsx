@@ -4,14 +4,14 @@ import { db } from '../../data/db';
 import { archiveDog } from '../../data/repo';
 import { breedLabel, purposeLabel } from '../../domain/breeds';
 import { exportDogReport } from '../../export/run';
-import { formatMinutesOfTarget } from '../../domain/format';
+import { formatTyped } from '../../domain/format';
 import { NOT_IN_CURRENT_LIST, isInTeamList, odourById, teamOdourGroups } from '../../domain/odours';
-import { IMPRINT_TARGET_S, isImprinted, isRunning, odourTotal } from '../../domain/totals';
+import { IMPRINT_TARGET_S, isImprinted, isRunning, liveElapsed, odourTotal } from '../../domain/totals';
 import { useMe } from '../../hooks/useMe';
 import { useNow } from '../../hooks/useNow';
 import { useUnitData } from '../../hooks/useUnitData';
 import { BreedPortrait } from '../components/BreedPortrait';
-import { ExportButton } from '../components/ExportButton';
+import { ExportButton, UnsyncedNote } from '../components/ExportButton';
 import { HeaderBar } from '../components/HeaderBar';
 import { ImprintedStamp } from '../components/ImprintedStamp';
 import { PillToggle } from '../components/PillToggle';
@@ -71,66 +71,62 @@ export function DogScreen() {
     }
   }
 
+  const team = teams.find((t) => t.id === dog.team_id);
+
   return (
     <div className="screen">
       <HeaderBar title={dog.name} onBack={() => navigate(`/team/${dog.team_id}`)}
-        right={isTrainer ? (
-          <Link to={`/dog/${dog.id}/log`}
-            style={{ display: 'inline-flex', alignItems: 'center', minHeight: 'var(--tap)', padding: '0 12px', textDecoration: 'none' }}>
-            Log
-          </Link>
-        ) : undefined} />
-      <main className="pad">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 12 }}>
+        right={isTrainer ? <Link to={`/dog/${dog.id}/log`} className="btn-text">Log</Link> : undefined} />
+      <main className="page">
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: 2 }}>
           <BreedPortrait breed={dog.breed} size="md" play idle={!!runningHere} />
-          <p style={{ margin: 0, fontSize: 20, fontWeight: 800 }}>{`${breedLabel(dog.breed)} · ${purposeLabel(dog.purpose)}`}</p>
+        </div>
+        <div className="band" style={{ flexWrap: 'wrap', alignItems: 'baseline', padding: '7px 0', gap: '2px 12px' }}>
+          <span className="italic" style={{ fontSize: 19 }}>{breedLabel(dog.breed)}</span>
+          <span className="band-end num soft" style={{ fontSize: 14 }}>
+            {[purposeLabel(dog.purpose).toLowerCase(), team?.name].filter(Boolean).join(' · ')}
+          </span>
         </div>
         {groups.length > 0 && shown && (
           <PillToggle value={shown.category.id} options={groups.map((g) => ({ value: g.category.id, label: g.category.name }))}
             onChange={(cat) => setParams({ cat }, { replace: true })} />
         )}
-        {groups.length === 0 && <p style={{ textAlign: 'center', fontWeight: 800 }}>No odours selected for this team</p>}
+        {groups.length === 0 && <p className="italic" style={{ textAlign: 'center' }}>No odours selected for this team</p>}
 
         {runningOdour && !isInTeamList(dog.team_id, runningOdour.id, catalogue) && (
-          <Link to={`/dog/${dog.id}/timer/${runningOdour.id}`} style={{
-            display: 'block', marginTop: 16, padding: '10px 12px', textDecoration: 'none', fontWeight: 800,
-            border: '1.5px solid var(--ink)', borderRadius: 'var(--radius)', background: 'var(--mustard)',
-          }}>
-            {`Running: ${runningOdour.name} ${NOT_IN_CURRENT_LIST}`}
+          <Link to={`/dog/${dog.id}/timer/${runningOdour.id}`} className="running-box" style={{ textDecoration: 'none' }}>
+            <span className="running-box-main">
+              <span className="running-line" style={{ display: 'block' }}>{`Running: ${runningOdour.name} ${NOT_IN_CURRENT_LIST}`}</span>
+            </span>
           </Link>
         )}
 
-        <ul style={{ listStyle: 'none', margin: '16px 0 0', padding: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
+        <ul className="rows">
           {(shown?.odours ?? []).map((odour) => {
             const total = odourTotal(sessions, corrections, dog.id, odour.id, now);
             const imprinted = isImprinted(total);
             const runningThis = runningHere?.odour_id === odour.id;
+            const liveS = runningThis && runningHere ? liveElapsed(runningHere, corrections, now) : 0;
             return (
               <li key={odour.id}>
-                <Link to={`/dog/${dog.id}/timer/${odour.id}`}
+                <Link to={`/dog/${dog.id}/timer/${odour.id}`} className="odour-link"
                   aria-label={imprinted
                     ? `${odour.name}, imprinted`
-                    : `${odour.name}, ${Math.floor(total / 60)} of ${IMPRINT_TARGET_S / 60} minutes`}
-                  style={{
-                    display: 'block', minHeight: 64, padding: '10px 12px', textDecoration: 'none',
-                    border: '1.5px solid var(--ink)', borderRadius: 'var(--radius)', background: 'var(--paper)',
-                  }}>
-                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, minHeight: 36 }}>
-                    <span data-odour-name style={{ fontSize: 20, fontWeight: 800 }}>{odour.name}</span>
-                    {runningThis && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 14, fontWeight: 800 }}>
-                        <span data-testid="running-dot" aria-hidden="true" style={{
-                          width: 10, height: 10, borderRadius: '50%', background: 'var(--stamp)',
-                        }} />
-                        Running
+                    : `${odour.name}, ${Math.floor(total / 60)} of ${IMPRINT_TARGET_S / 60} minutes`}>
+                  <span className="odour-top">
+                    <span>
+                      <span data-odour-name className="odour-name">{odour.name}</span>
+                      {runningThis && <>{' '}<span data-testid="running-tag" className="tag">Running</span></>}
+                    </span>
+                    {imprinted ? <ImprintedStamp size="row" /> : total === 0 && !runningThis ? (
+                      <span className="odour-time soft">not started</span>
+                    ) : (
+                      <span className="odour-time">
+                        <b>{formatTyped(total)}</b><span className="soft">{` / ${formatTyped(IMPRINT_TARGET_S)}`}</span>
                       </span>
                     )}
-                    <span style={{ flex: 1 }} />
-                    {imprinted
-                      ? <ImprintedStamp size="row" />
-                      : <span className="num" style={{ fontWeight: 800 }}>{formatMinutesOfTarget(total)}</span>}
                   </span>
-                  <ProgressBar valueS={total} label={odour.name} />
+                  <ProgressBar valueS={total} liveS={liveS} label={odour.name} />
                 </Link>
               </li>
             );
@@ -138,14 +134,14 @@ export function DogScreen() {
         </ul>
 
         {isTrainer && (
-          <div style={{ display: 'flex', gap: 12, marginTop: 24 }}>
-            <button type="button" className="btn" style={{ flex: 1 }} onClick={() => setEditing(true)}>Edit</button>
-            <button type="button" className="btn" style={{ flex: 1 }} onClick={askToArchive}>Archive</button>
-          </div>
-        )}
-        {isTrainer && (
-          <div style={{ marginTop: 12 }}>
-            <ExportButton label="Progress report (PDF)" run={() => exportDogReport(db, me, dog.id)} />
+          <div style={{ marginTop: 'auto', paddingTop: 20 }}>
+            <UnsyncedNote />
+            <div className="btn-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 8 }}>
+              <button type="button" className="btn" onClick={() => setEditing(true)}>Edit</button>
+              <button type="button" className="btn" onClick={askToArchive}>Archive</button>
+              <ExportButton note={false} block={false} label="Progress report (PDF)" shortLabel="Report PDF"
+                run={() => exportDogReport(db, me, dog.id)} />
+            </div>
           </div>
         )}
         {isTrainer && blocked && runningHere && (
@@ -156,13 +152,13 @@ export function DogScreen() {
       {isTrainer && <DogSheet open={editing} onClose={() => setEditing(false)} teams={teams} dog={dog} />}
 
       <Sheet open={confirming} onClose={() => setConfirming(false)} title="Archive dog">
-        <p style={{ fontSize: 18 }}>
+        <p className="sheet-text">
           {`Archive ${dog.name}? It disappears from the list; you can restore it from Archived.`}
         </p>
         {error && confirming && <p role="alert" className="error">{error}</p>}
-        <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-          <button type="button" className="btn" style={{ flex: 1 }} onClick={() => setConfirming(false)}>Cancel</button>
-          <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={archive}>
+        <div className="sheet-actions">
+          <button type="button" className="btn" onClick={() => setConfirming(false)}>Cancel</button>
+          <button type="button" className="btn btn-primary btn-danger" onClick={archive}>
             {`Archive ${dog.name}`}
           </button>
         </div>

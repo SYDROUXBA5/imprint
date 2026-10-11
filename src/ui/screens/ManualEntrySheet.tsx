@@ -65,12 +65,12 @@ function EntryForm({ dogId, odourId, onClose, onCrossed }: Omit<ManualEntrySheet
         className="field num" value={minutes} aria-describedby="manual-hint"
         aria-invalid={error === 'Enter whole minutes above 0' ? true : undefined}
         onChange={(e) => setMinutes(e.target.value)} />
-      <p id="manual-hint" className="muted" style={{ margin: '4px 0 0', fontSize: 15 }}>
+      <p id="manual-hint" className="hint">
         Whole minutes, for time you did not record with the timer.
       </p>
 
       {error && <p role="alert" className="error">{error}</p>}
-      <button type="submit" className="btn btn-primary" disabled={busy} style={{ width: '100%', marginTop: 16 }}>
+      <button type="submit" className="btn btn-primary btn-block" disabled={busy} style={{ marginTop: 20 }}>
         Save session
       </button>
     </form>

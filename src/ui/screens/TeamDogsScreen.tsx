@@ -1,18 +1,18 @@
 import { useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import { breedLabel, purposeLabel } from '../../domain/breeds';
-import { progressLine } from '../../domain/progress';
-import { isRunning } from '../../domain/totals';
+import { formatTyped, formatTypedClock } from '../../domain/format';
+import { odourName, selectedOdourIds } from '../../domain/odours';
+import { trainedOdours } from '../../domain/progress';
+import { isImprinted, isRunning } from '../../domain/totals';
 import { useMe } from '../../hooks/useMe';
 import { useNow } from '../../hooks/useNow';
-import { useRunningItems } from '../../hooks/useRunningItems';
 import { useUnitData } from '../../hooks/useUnitData';
 import { BreedPortrait } from '../components/BreedPortrait';
-import { Card } from '../components/Card';
+import { Capacity } from '../components/Capacity';
 import { DogDrawing } from '../components/DogDrawing';
 import { HeaderBar } from '../components/HeaderBar';
-import { RunningBanner } from '../components/RunningBanner';
-import { dogCountText } from '../shared';
+import { freePlacesText, plural } from '../shared';
 import { DogSheet } from './DogSheet';
 import { TeamSettingsSheet } from './TeamSettingsSheet';
 
@@ -20,77 +20,92 @@ import { TeamSettingsSheet } from './TeamSettingsSheet';
 export function TeamDogsScreen() {
   const { teamId } = useParams();
   const me = useMe();
-  const { dogs, teams, odours, catalogue, members, sessions, corrections, loading } = useUnitData();
+  const { dogs, teams, odours, catalogue, sessions, corrections, loading } = useUnitData();
   const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   const team = teams.find((t) => t.id === teamId);
   const teamDogs = dogs.filter((d) => d.team_id === teamId);
-  const running = useRunningItems(teamDogs, members, odours, sessions, corrections);
+  const running = useMemo(
+    () => sessions.filter((s) => teamDogs.some((d) => d.id === s.dog_id) && isRunning(s, corrections)),
+    [sessions, corrections, teamDogs],
+  );
   const now = useNow(running.length > 0 ? 1000 : null);
-  const timerRunning = useMemo(() => {
-    const ids = new Set(teamDogs.map((d) => d.id));
-    return sessions.some((s) => ids.has(s.dog_id) && isRunning(s, corrections));
-  }, [teamDogs, sessions, corrections]);
+  // The timer running on each dog of the team (a dog has at most one), for the "Running 07:41 · C4/RDX" tag.
+  const runningByDog = useMemo(() => {
+    const byDog = new Map<string, { startedAt: string; odour: string }>();
+    for (const s of running) byDog.set(s.dog_id, { startedAt: s.started_at!, odour: odourName(odours, s.odour_id) });
+    return byDog;
+  }, [running, odours]);
+  const timerRunning = running.length > 0;
 
   if (loading || !me) return null;
   if (!team) return <Navigate to="/" replace />;
   const isTrainer = me.role === 'trainer';
+  const offeredOdours = new Set(catalogue.odours.filter((o) => o.archived_at === null).map((o) => o.id));
+  const teamOdourCount = [...selectedOdourIds(catalogue.teamOdours, team.id)].filter((id) => offeredOdours.has(id)).length;
+  const freePlaces = freePlacesText(teamDogs.length, team.planned_dogs);
 
   return (
     <div className="screen">
       <HeaderBar title={team.name} onBack={() => navigate('/')} right={isTrainer ? (
-        <button type="button" onClick={() => setSettingsOpen(true)}
-          style={{ background: 'none', border: 0, padding: '0 12px', fontWeight: 800, fontSize: 'inherit' }}>
-          Settings
-        </button>
+        <button type="button" className="btn-text" onClick={() => setSettingsOpen(true)}>Settings</button>
       ) : undefined} />
-      <RunningBanner items={running} />
-      <main className="pad">
-        <p className="num" style={{ margin: '0 0 12px', textAlign: 'center', fontWeight: 800 }}>
-          {dogCountText(teamDogs.length, team.planned_dogs)}
-        </p>
+
+      <div className="band" style={{ marginTop: 8 }}>
+        <Capacity count={teamDogs.length} planned={team.planned_dogs} />
+        <span className="band-end nowrap num soft" style={{ fontSize: 14 }}>{plural(teamOdourCount, 'odour')}</span>
+      </div>
+
+      <main className="page">
         {isTrainer && (
-          <button type="button" className="btn btn-primary" style={{ width: '100%', marginBottom: 12 }}
+          <button type="button" className="btn btn-primary" aria-label="+ Add dog" style={{ marginTop: 14 }}
             onClick={() => setAdding(true)}>
-            + Add dog
+            Add dog
           </button>
         )}
 
         {teamDogs.length === 0 && (
           <div style={{ display: 'grid', justifyItems: 'center', gap: 8, padding: '24px 0', textAlign: 'center' }}>
             <DogDrawing />
-            <h2 style={{ fontSize: 22 }}>No dogs yet</h2>
-            {isTrainer && <p style={{ margin: 0 }}>Add your first dog</p>}
+            <h2 style={{ fontSize: 24 }}>No dogs yet</h2>
+            {isTrainer && <p className="italic" style={{ margin: 0 }}>Add your first dog</p>}
           </div>
         )}
 
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 12 }}>
+        <ul className="rows" style={{ marginTop: 4 }}>
           {teamDogs.map((d) => {
-            const line = progressLine(d.id, sessions, corrections, odours, now);
+            const trained = trainedOdours(d.id, sessions, corrections, odours, now);
+            const imprinted = trained.filter((o) => isImprinted(o.totalS)).length;
+            const latest = trained.find((o) => !isImprinted(o.totalS));
+            const live = runningByDog.get(d.id);
             return (
               <li key={d.id}>
-                <Card onClick={() => navigate(`/dog/${d.id}`)}>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <BreedPortrait breed={d.breed} size="sm" play={false} />
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: 'block', fontSize: 24, fontWeight: 800, overflowWrap: 'anywhere' }}>{d.name}</span>
-                      <span className="muted" style={{ display: 'block', fontWeight: 700 }}>
-                        {`${breedLabel(d.breed)} · ${purposeLabel(d.purpose)}`}
-                      </span>
-                      <span className="num" style={{
-                        display: 'block', overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis',
-                      }}>
-                        {line || 'Nothing logged yet'}
-                      </span>
+                <button type="button" className="row-btn dog-row" onClick={() => navigate(`/dog/${d.id}`)}>
+                  <BreedPortrait breed={d.breed} size="sm" play={false} />
+                  <span className="dog-row-text">
+                    <span className="dog-name">{d.name}</span>
+                    <span className="dog-breed">{breedLabel(d.breed)}</span>
+                    <span className="dog-purpose">{purposeLabel(d.purpose).toLowerCase()}</span>
+                    <span className="dog-status">
+                      {imprinted > 0 && <span className="stamp stamp-small">{`${imprinted} imprinted`}</span>}
+                      {live ? (
+                        <span className="tag tag-run">{`Running ${formatTypedClock((now - Date.parse(live.startedAt)) / 1000)} · ${live.odour}`}</span>
+                      ) : latest ? (
+                        <span>{`${latest.name} ${formatTyped(latest.totalS)}`}</span>
+                      ) : imprinted === 0 ? (
+                        <span className="soft" style={{ fontWeight: 400 }}>Nothing logged yet</span>
+                      ) : null}
                     </span>
                   </span>
-                </Card>
+                </button>
               </li>
             );
           })}
         </ul>
+
+        {freePlaces && <p className="sync-line" style={{ margin: 'auto 0 0' }}>{freePlaces}</p>}
       </main>
 
       {isTrainer && <DogSheet open={adding} onClose={() => setAdding(false)} teams={teams} teamId={team.id} />}

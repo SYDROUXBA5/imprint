@@ -30,8 +30,6 @@ const CARDS: { role: Role; title: string; about: string }[] = [
   { role: 'handler', title: 'Handler link', about: 'Handlers choose a dog and add time.' },
 ];
 
-const boxed = { padding: 12, border: '1.5px solid var(--ink)', borderRadius: 'var(--radius)', background: 'var(--paper)' } as const;
-
 /** The address people open: this app's own address, with the role and token after the #. */
 const addressOf = (role: Role, token: string) => buildLink(role, token, window.location.origin, import.meta.env.BASE_URL);
 
@@ -120,24 +118,22 @@ export function MembersScreen() {
   const closeConfirm = () => { setConfirm(null); setError(''); };
 
   const people = (title: string, list: Member[]) => (
-    <section aria-label={title} style={{ marginTop: 20 }}>
-      <h2 style={{ fontSize: 22 }}>{title}</h2>
-      {list.length === 0 && <p className="muted" style={{ margin: '8px 0 0' }}>Nobody yet.</p>}
-      <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, display: 'grid', gap: 12 }}>
+    <section aria-label={title} className="section">
+      <h2>{title}</h2>
+      {list.length === 0 && <p className="italic soft">Nobody yet.</p>}
+      <ul className="rows">
         {list.map((m) => (
-          <li key={m.id} style={boxed}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-              <span style={{ fontSize: 20, fontWeight: 800, overflowWrap: 'anywhere' }}>{m.name}</span>
-              {m.id === me.id ? (
-                <span className="muted" style={{ fontWeight: 700 }}>you</span>
-              ) : (
-                <button type="button" className="btn" style={{ marginLeft: 'auto', fontSize: 16 }} disabled={locked}
-                  aria-label={`Remove ${m.name}`}
-                  onClick={() => { setError(''); setConfirm({ kind: 'remove', member: m }); }}>
-                  Remove
-                </button>
-              )}
-            </div>
+          <li key={m.id} className="odour-edit-row" style={{ minHeight: 60 }}>
+            <span style={{ fontSize: 24, fontWeight: 600, lineHeight: 1.1, overflowWrap: 'break-word' }}>{m.name}</span>
+            {m.id === me.id ? (
+              <span className="num soft" style={{ fontSize: 14 }}>you</span>
+            ) : (
+              <button type="button" className="btn btn-sm" disabled={locked}
+                aria-label={`Remove ${m.name}`}
+                onClick={() => { setError(''); setConfirm({ kind: 'remove', member: m }); }}>
+                Remove
+              </button>
+            )}
           </li>
         ))}
       </ul>
@@ -147,39 +143,36 @@ export function MembersScreen() {
   return (
     <div className="screen">
       <HeaderBar title="Members" onBack={() => navigate('/')} />
-      <main className="pad">
+      <main className="page">
         {!online && (
-          <p role="status" style={{ margin: '0 0 12px', fontWeight: 800 }}>Member changes need signal.</p>
+          <p role="status" className="note">Member changes need signal.</p>
         )}
         {linksError && (
           <div>
             <p role="alert" className="error">{linksError}</p>
-            <button type="button" className="btn" style={{ width: '100%', marginTop: 8 }} onClick={() => void loadLinks()}>
+            <button type="button" className="btn btn-block" style={{ marginTop: 10 }} onClick={() => void loadLinks()}>
               Try again
             </button>
           </div>
         )}
         {copyError && <p role="alert" className="error">{copyError}</p>}
-        {copied && <p role="status" style={{ margin: '0 0 8px', fontWeight: 800 }}>Copied</p>}
+        {copied && <p role="status" className="hint">Copied</p>}
 
         {links && (
-          <div style={{ display: 'grid', gap: 16 }}>
+          <div>
             {CARDS.map((c) => (
-              <section key={c.role} aria-label={c.title} style={{ ...boxed, padding: 14 }}>
-                <h2 style={{ fontSize: 22 }}>{c.title}</h2>
-                <p className="muted" style={{ margin: '2px 0 8px' }}>{c.about}</p>
-                <p data-testid={`${c.role}-link`} style={{
-                  margin: '0 0 12px', padding: '8px 10px', border: '1.5px dashed var(--ink)', borderRadius: 10,
-                  fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 13, lineHeight: 1.4, overflowWrap: 'anywhere', userSelect: 'all',
-                }}>
+              <section key={c.role} aria-label={c.title} className="section">
+                <h2>{c.title}</h2>
+                <p className="italic soft" style={{ margin: '2px 0 10px' }}>{c.about}</p>
+                <p data-testid={`${c.role}-link`} className="link-box">
                   {addressOf(c.role, links[c.role])}
                 </p>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <button type="button" className="btn" style={{ flex: 1, fontSize: 16 }} onClick={() => void copy(c.role)}>Copy</button>
+                  <button type="button" className="btn" style={{ flex: 1 }} onClick={() => void copy(c.role)}>Copy</button>
                   {canShare && (
-                    <button type="button" className="btn" style={{ flex: 1, fontSize: 16 }} onClick={() => void share(c.role)}>Share</button>
+                    <button type="button" className="btn" style={{ flex: 1 }} onClick={() => void share(c.role)}>Share</button>
                   )}
-                  <button type="button" className="btn" style={{ flex: 1, fontSize: 16 }} disabled={locked}
+                  <button type="button" className="btn" style={{ flex: 1 }} disabled={locked}
                     onClick={() => { setError(''); setConfirm({ kind: 'link', role: c.role }); }}>
                     New link
                   </button>
@@ -194,22 +187,19 @@ export function MembersScreen() {
         {people('Trainers', trainers)}
         {people('Handlers', handlers)}
 
-        <section aria-label="Export" style={{ marginTop: 24 }}>
-          <h2 style={{ fontSize: 22, marginBottom: 8 }}>Export</h2>
+        <section aria-label="Export" className="section">
+          <h2 style={{ marginBottom: 10 }}>Export</h2>
           <ExportButton label="Export all sessions (CSV)" run={() => exportAllSessionsCsv(db)} />
         </section>
 
         {removed.length > 0 && (
-          <section aria-label="Removed" style={{ marginTop: 24 }}>
-            <h2 style={{ fontSize: 22 }}>Removed</h2>
-            <ul style={{ listStyle: 'none', margin: '8px 0 0', padding: 0, display: 'grid', gap: 8 }}>
+          <section aria-label="Removed" className="section">
+            <h2>Removed</h2>
+            <ul className="rows">
               {removed.map((m) => (
-                <li key={m.id} style={{
-                  display: 'flex', justifyContent: 'space-between', gap: 8, padding: '10px 12px', opacity: 0.55,
-                  border: '1.5px dashed var(--ink)', borderRadius: 'var(--radius)',
-                }}>
-                  <span style={{ fontWeight: 800, overflowWrap: 'anywhere' }}>{m.name}</span>
-                  <span>{m.role === 'trainer' ? 'Trainer' : 'Handler'}</span>
+                <li key={m.id} className="odour-edit-row soft" style={{ minHeight: 48 }}>
+                  <span style={{ fontSize: 20, overflowWrap: 'anywhere' }}>{m.name}</span>
+                  <span className="num" style={{ fontSize: 14 }}>{m.role === 'trainer' ? 'Trainer' : 'Handler'}</span>
                 </li>
               ))}
             </ul>
@@ -220,19 +210,19 @@ export function MembersScreen() {
       {confirm && (
         <Sheet open onClose={closeConfirm}
           title={confirm.kind === 'link' ? (confirm.role === 'trainer' ? 'New trainer link' : 'New handler link') : 'Remove member'}>
-          <p style={{ fontSize: 18 }}>
+          <p className="sheet-text">
             {confirm.kind === 'link'
               ? 'Everyone using the old link will need the new one.'
               : `Remove ${confirm.member.name}? Their past sessions stay in the log.`}
           </p>
           {confirm.kind === 'remove' && (
-            <p className="muted" style={{ fontSize: 16 }}>To really cut someone off, also make a new link.</p>
+            <p className="hint">To really cut someone off, also make a new link.</p>
           )}
           {!online && <p className="error">Member changes need signal.</p>}
           {error && <p role="alert" className="error">{error}</p>}
-          <div style={{ display: 'flex', gap: 12, marginTop: 16 }}>
-            <button type="button" className="btn" style={{ flex: 1 }} onClick={closeConfirm}>Cancel</button>
-            <button type="button" className="btn btn-primary" style={{ flex: 1 }} disabled={locked} onClick={confirmed}>
+          <div className="sheet-actions">
+            <button type="button" className="btn" onClick={closeConfirm}>Cancel</button>
+            <button type="button" className={`btn btn-primary${confirm.kind === 'remove' ? ' btn-danger' : ''}`} disabled={locked} onClick={confirmed}>
               {confirm.kind === 'link' ? 'Make new link' : `Remove ${confirm.member.name}`}
             </button>
           </div>

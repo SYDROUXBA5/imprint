@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { addName, chooseName, loadNames, markLost, type Entered, type NameChoice } from '../../data/account';
 import type { Role } from '../../domain/types';
-import { HeaderBar } from '../components/HeaderBar';
+import { ForwardChevron } from '../components/icons';
+import { Masthead } from '../components/Masthead';
 import { friendlyLinkError } from '../linkErrors';
 
 const LISTS: Record<Role, string> = { trainer: 'Trainers', handler: 'Handlers' };
@@ -9,17 +10,15 @@ const LISTS: Record<Role, string> = { trainer: 'Trainers', handler: 'Handlers' }
 function Shell({ unitName, scope, children }: { unitName?: string; scope: Role; children: ReactNode }) {
   return (
     <div className="screen">
-      <HeaderBar title="Who are you?" />
-      <main className="pad">
-        <p style={{ margin: '0 0 12px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, flexWrap: 'wrap', textAlign: 'center' }}>
-          {unitName && <span style={{ fontWeight: 800, overflowWrap: 'anywhere' }}>{unitName}</span>}
-          <span style={{
-            padding: '2px 10px', border: '1.5px solid var(--ink)', borderRadius: 999, fontSize: 14, fontWeight: 800,
-            background: scope === 'trainer' ? 'var(--mustard)' : 'var(--paper)',
-          }}>
-            {LISTS[scope]}
-          </span>
-        </p>
+      <Masthead />
+      <header style={{ marginTop: 22 }}>
+        <h1 style={{ fontSize: 34, lineHeight: 1, letterSpacing: '-0.01em' }}>Who are you?</h1>
+      </header>
+      <div className="band" style={{ marginTop: 10, justifyContent: 'space-between', gap: 10 }}>
+        <span className="num" style={{ fontSize: 15, overflowWrap: 'anywhere' }}>{unitName ?? ''}</span>
+        <span className="caps" style={{ color: 'var(--ink)', flex: 'none' }}>{LISTS[scope]}</span>
+      </div>
+      <main className="page">
         {children}
       </main>
     </div>
@@ -51,33 +50,34 @@ function Body({ names, busy = false, error = '', onChoose, onAdd }: Omit<WhoAreY
   return (
     <>
       {names.length === 0 && (
-        <p style={{ textAlign: 'center', fontSize: 18 }}>Nobody is on this list yet. Add your name to start.</p>
+        <p className="italic" style={{ fontSize: 20 }}>Nobody is on this list yet. Add your name to start.</p>
       )}
       {names.length > 0 && (
-        <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: 12 }}>
+        <ul className="rows">
           {names.map((n) => (
             <li key={n.id}>
-              <button type="button" className="btn" disabled={busy} onClick={() => onChoose(n.id)}
-                style={{ width: '100%', minHeight: 68, fontSize: 24, borderWidth: 2, overflowWrap: 'anywhere' }}>
-                {n.name}
+              <button type="button" className="row-btn" disabled={busy} onClick={() => onChoose(n.id)}
+                style={{ minHeight: 68, fontSize: 28, fontWeight: 600, lineHeight: 1.1, opacity: busy ? 0.5 : 1 }}>
+                <span style={{ flex: 1, minWidth: 0, overflowWrap: 'anywhere' }}>{n.name}</span>
+                <ForwardChevron />
               </button>
             </li>
           ))}
         </ul>
       )}
-      {error && <p role="alert" className="error" style={{ fontSize: 17 }}>{error}</p>}
+      {error && <p role="alert" className="error">{error}</p>}
       {open ? (
         <form onSubmit={submit} aria-label="Add my name" style={{ marginTop: 20 }}>
           <label className="label" htmlFor="who-name">Your name</label>
           <input id="who-name" className="field" value={name} required maxLength={60} autoComplete="name"
             enterKeyHint="go" onChange={(e) => setName(e.target.value)} />
-          <button type="submit" className="btn btn-primary" disabled={busy} style={{ width: '100%', marginTop: 12 }}>
+          <button type="submit" className="btn btn-primary btn-block" disabled={busy} style={{ marginTop: 14 }}>
             Add and continue
           </button>
         </form>
       ) : (
-        <button type="button" className="btn" disabled={busy} onClick={() => setAdding(true)}
-          style={{ width: '100%', marginTop: 20, borderStyle: 'dashed' }}>
+        <button type="button" className="btn btn-block" disabled={busy} onClick={() => setAdding(true)}
+          style={{ marginTop: 20 }}>
           Add my name
         </button>
       )}
@@ -127,11 +127,11 @@ export function WhoAreYouScreen({ scope }: { scope: Role }) {
     <Shell unitName={entered?.unit_name} scope={entered?.scope ?? scope}>
       {loadError ? (
         <>
-          <p role="alert" className="error" style={{ fontSize: 17 }}>{loadError}</p>
-          <button type="button" className="btn" style={{ width: '100%', marginTop: 12 }} onClick={() => void load()}>Try again</button>
+          <p role="alert" className="error">{loadError}</p>
+          <button type="button" className="btn btn-block" style={{ marginTop: 12 }} onClick={() => void load()}>Try again</button>
         </>
       ) : !entered ? (
-        <p role="status" style={{ textAlign: 'center' }}>Getting the names&hellip;</p>
+        <p role="status" className="italic">Getting the names&hellip;</p>
       ) : (
         <Body names={entered.names} busy={busy} error={error}
           onChoose={(id) => void run(() => chooseName(id))} onAdd={(name) => void run(() => addName(name))} />
