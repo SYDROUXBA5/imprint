@@ -1,6 +1,6 @@
 import type { PGlite } from '@electric-sql/pglite';
 import { describe, expect, it } from 'vitest';
-import { addUser, applyMigrations, as, freshDb } from './harness';
+import { addUser, applyMigrations, as, createUnit, freshDb, joinAs } from './harness';
 
 // Spec §13: teams, dog breed/purpose, odour catalogue. Roles from three angles everywhere:
 // a handler and a trainer of the unit, and a trainer of a different unit.
@@ -16,14 +16,11 @@ const XDOG = '10000000-0000-0000-0000-000000000003'; // unit 2, in XTEAM
 
 async function setup() {
   const db = await freshDb();
-  for (const u of [T, H, X]) await addUser(db, u);
-  await as(db, T, () => db.query(`select public.create_unit('Wells K9', 'Tess')`));
-  const code = (await db.query<{ invite_code: string }>('select invite_code from units where name = $1', ['Wells K9'])).rows[0].invite_code;
-  await as(db, H, () => db.query(`select public.join_unit($1, 'Paul')`, [code]));
-  await as(db, X, () => db.query(`select public.create_unit('Other unit', 'Xavier')`));
-  const member = async (user: string) =>
-    (await db.query<{ id: string; unit_id: string }>('select id, unit_id from members where user_id = $1', [user])).rows[0];
-  const t = await member(T), h = await member(H), x = await member(X);
+  const links = await createUnit(db, 'Wells K9');
+  const otherLinks = await createUnit(db, 'Other unit');
+  const t = await joinAs(db, T, links.trainer, 'Tess');
+  const h = await joinAs(db, H, links.handler, 'Paul');
+  const x = await joinAs(db, X, otherLinks.trainer, 'Xavier');
   const unit = t.unit_id, xUnit = x.unit_id;
   const team = (user: string, m: { id: string; unit_id: string }, id: string, name: string) => as(db, user, () => db.query(
     `insert into teams (id, unit_id, name, created_by) values ($1, $2, $3, $4)`, [id, m.unit_id, name, m.id]));
@@ -38,7 +35,7 @@ async function setup() {
   const odoursOf = async (u: string) => Object.fromEntries((await db.query<{ id: string; name: string }>(
     'select id, name from odours where unit_id = $1', [u])).rows.map((r) => [r.name, r.id]));
   const o1 = await odoursOf(unit), o2 = await odoursOf(xUnit); // odour ids by name, per unit
-  return { db, t, h, x, unit, xUnit, o1, o2 };
+  return { db, t, h, x, links, unit, xUnit, o1, o2 };
 }
 
 type Ctx = Awaited<ReturnType<typeof setup>>;
@@ -54,7 +51,7 @@ const insertTimed = (db: PGlite, id: string, unit: string, dog: string, odour: s
 
 // ───────── The default catalogue ─────────
 
-describe('create_unit seeds the odour catalogue', () => {
+describe('setup_unit seeds the odour catalogue', () => {
   it('four categories, in order, with the odours of spec §13.4', async () => {
     const { db, unit } = await setup();
     const cats = (await db.query<{ id: string; name: string }>(
@@ -265,11 +262,22 @@ describe('writing: only active trainers of the unit', () => {
   });
 
   it('a removed trainer can write nothing', async () => {
-    const { db, t, h, unit } = await setup();
-    await as(db, T, () => db.query(`update members set role = 'trainer' where id = $1`, [h.id])); // a second trainer
-    await as(db, T, () => db.query(`update members set removed_at = now() where id = $1`, [t.id])); // ... and T leaves
-    await expect(as(db, T, () => db.query(
-      `insert into teams (id, unit_id, name, created_by) values (gen_random_uuid(), $1, 'Late', $2)`, [unit, t.id]),
+    const { db, links, unit } = await setup();
+    const T2 = '00000000-0000-0000-0000-0000000000a2';
+    const tina = await joinAs(db, T2, links.trainer, 'Tina'); // a second trainer phone ...
+    await as(db, T, () => db.query('select public.remove_member($1)', [tina.id])); // ... and her name is removed
+    await expect(as(db, T2, () => db.query(
+      `insert into teams (id, unit_id, name, created_by) values (gen_random_uuid(), $1, 'Late', $2)`, [unit, tina.id]),
+    )).rejects.toThrow(/row-level security/);
+  });
+
+  it('a phone whose trainer link was replaced can write nothing', async () => {
+    const { db, links, unit } = await setup();
+    const T2 = '00000000-0000-0000-0000-0000000000a2';
+    const tina = await joinAs(db, T2, links.trainer, 'Tina');
+    await as(db, T, () => db.query(`select public.regenerate_link('trainer')`)); // Tess keeps access, Tina does not
+    await expect(as(db, T2, () => db.query(
+      `insert into teams (id, unit_id, name, created_by) values (gen_random_uuid(), $1, 'Late', $2)`, [unit, tina.id]),
     )).rejects.toThrow(/row-level security/);
   });
 
@@ -563,7 +571,8 @@ describe('anon cannot execute any function in the public schema', () => {
   it('the RLS helpers and the RPCs stay executable by authenticated', async () => {
     const db = await freshDb();
     const names = ['my_member_id', 'is_active_member', 'is_trainer', 'was_me_active_at', 'dog_in_unit', 'session_in_unit',
-      'create_unit', 'join_unit', 'regenerate_invite_code', 'delete_dog_forever', 'delete_team_forever'];
+      'enter_with_link', 'choose_name', 'add_name', 'switch_name', 'get_links', 'regenerate_link', 'remove_member',
+      'delete_dog_forever', 'delete_team_forever'];
     const { rows } = await db.query<{ proname: string; authed: boolean }>(`
       select p.proname, has_function_privilege('authenticated', p.oid, 'execute') as authed
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
@@ -579,8 +588,7 @@ describe('anon cannot execute any function in the public schema', () => {
 
   it('with the revokes in place RLS still works for authenticated, and anon reads nothing and does not error', async () => {
     const { db } = await setup();
-    // Supabase also grants table privileges to anon; RLS is what keeps it out.
-    await db.exec('grant select, insert, update, delete on all tables in schema public to anon');
+    // The harness grants table privileges to anon, as Supabase does; RLS is what keeps it out.
     for (const table of ['units', 'members', 'teams', 'dogs', 'sessions', 'corrections', 'odour_categories', 'odours', 'team_odours', 'deleted_dogs', 'deleted_teams']) {
       await db.exec('set role anon');
       try {

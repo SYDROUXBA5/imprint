@@ -5,13 +5,20 @@ import { freshDb } from './harness';
 // anon and authenticated), so each function below is only closed to anon if its
 // migration says REVOKE ... FROM anon explicitly.
 const RPCS = [
-  `public.create_unit('Wells K9', 'Tess')`,
-  `public.join_unit('ABC234', 'Paul')`,
-  `public.regenerate_invite_code()`,
-  `public.gen_invite_code()`,
+  `public.enter_with_link('0123456789abcdef0123456789abcdef')`,
+  `public.choose_name(gen_random_uuid())`,
+  `public.add_name('Paul')`,
+  `public.switch_name()`,
+  `public.get_links()`,
+  `public.regenerate_link('handler')`,
+  `public.remove_member(gen_random_uuid())`,
+  `public.setup_unit('Wells K9')`,
+  `public.make_unit('Wells K9')`,
+  `public.live_device()`,
+  `public.entered_payload(gen_random_uuid(), 'handler')`,
 ];
 
-describe('anon cannot execute the invite/unit functions', () => {
+describe('anon cannot execute the link, name and unit functions', () => {
   for (const call of RPCS) {
     it(call, async () => {
       const db = await freshDb();
@@ -32,8 +39,11 @@ describe('anon cannot execute the invite/unit functions', () => {
              has_function_privilege('authenticated', p.oid, 'execute') as authed
       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
       where n.nspname = 'public'
-        and p.proname in ('create_unit', 'join_unit', 'regenerate_invite_code', 'delete_dog_forever', 'delete_team_forever')`);
-    expect(rows.map((r) => r.proname).sort()).toEqual(['create_unit', 'delete_dog_forever', 'delete_team_forever', 'join_unit', 'regenerate_invite_code']);
+        and p.proname in ('enter_with_link', 'choose_name', 'add_name', 'switch_name', 'get_links', 'regenerate_link',
+                          'remove_member', 'delete_dog_forever', 'delete_team_forever')`);
+    expect(rows.map((r) => r.proname).sort()).toEqual([
+      'add_name', 'choose_name', 'delete_dog_forever', 'delete_team_forever', 'enter_with_link', 'get_links',
+      'regenerate_link', 'remove_member', 'switch_name']);
     for (const r of rows) {
       expect(r.anon, `${r.proname} must not be executable by anon`).toBe(false);
       expect(r.authed, `${r.proname} must stay executable by authenticated`).toBe(true);

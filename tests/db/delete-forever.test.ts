@@ -1,6 +1,6 @@
 import type { PGlite } from '@electric-sql/pglite';
 import { describe, expect, it } from 'vitest';
-import { addUser, as, freshDb } from './harness';
+import { as, createUnit, freshDb, joinAs } from './harness';
 
 const T = '00000000-0000-0000-0000-0000000000a1'; // trainer, unit 1
 const H = '00000000-0000-0000-0000-0000000000b1'; // handler, unit 1
@@ -13,14 +13,11 @@ const X_TEAM = '30000000-0000-0000-0000-000000000002'; // unit 2
 
 async function setup() {
   const db = await freshDb();
-  for (const u of [T, H, X]) await addUser(db, u);
-  await as(db, T, () => db.query(`select public.create_unit('Wells K9', 'Tess')`));
-  const code = (await db.query<{ invite_code: string }>('select invite_code from units where name = $1', ['Wells K9'])).rows[0].invite_code;
-  await as(db, H, () => db.query(`select public.join_unit($1, 'Paul')`, [code]));
-  await as(db, X, () => db.query(`select public.create_unit('Other unit', 'Xavier')`));
-  const member = async (user: string) =>
-    (await db.query<{ id: string; unit_id: string }>('select id, unit_id from members where user_id = $1', [user])).rows[0];
-  const t = await member(T), h = await member(H), x = await member(X);
+  const links = await createUnit(db, 'Wells K9');
+  const otherLinks = await createUnit(db, 'Other unit');
+  const t = await joinAs(db, T, links.trainer, 'Tess');
+  const h = await joinAs(db, H, links.handler, 'Paul');
+  const x = await joinAs(db, X, otherLinks.trainer, 'Xavier');
   await as(db, T, () => db.query(
     `insert into teams (id, unit_id, name, created_by) values ($1, $2, 'Alpha', $3)`, [TEAM, t.unit_id, t.id]));
   await as(db, X, () => db.query(
@@ -32,7 +29,7 @@ async function setup() {
   await addDog(T, OTHER_DOG, 'Fly', t, TEAM);
   await addDog(X, X_DOG, 'Ace', x, X_TEAM);
   const mdma = (await db.query<{ id: string }>(`select id from odours where unit_id = $1 and name = 'MDMA'`, [t.unit_id])).rows[0].id;
-  return { db, t, h, x, unit: t.unit_id, xUnit: x.unit_id, mdma };
+  return { db, t, h, x, links, unit: t.unit_id, xUnit: x.unit_id, mdma };
 }
 
 type Ctx = Awaited<ReturnType<typeof setup>>;
@@ -90,11 +87,22 @@ describe('delete dog forever', () => {
   });
 
   it('a removed trainer is refused', async () => {
-    const { db, h } = await setup();
+    const { db, links } = await setup();
     await archive(db);
-    await as(db, T, () => db.query(`update members set role = 'trainer' where id = $1`, [h.id]));
-    await as(db, T, () => db.query(`update members set removed_at = now() where id = $1`, [h.id]));
-    await expect(del(db, H)).rejects.toThrow(/trainers only/);
+    const T2 = '00000000-0000-0000-0000-0000000000a2';
+    const tina = await joinAs(db, T2, links.trainer, 'Tina'); // a second trainer phone ...
+    await as(db, T, () => db.query('select public.remove_member($1)', [tina.id])); // ... and her name is removed
+    await expect(del(db, T2)).rejects.toThrow(/trainers only/);
+    expect(await count(db, 'dogs where id = $1', [DOG])).toBe(1);
+  });
+
+  it('a phone whose trainer link was replaced is refused', async () => {
+    const { db, links } = await setup();
+    await archive(db);
+    const T2 = '00000000-0000-0000-0000-0000000000a2';
+    await joinAs(db, T2, links.trainer, 'Tina');
+    await as(db, T, () => db.query(`select public.regenerate_link('trainer')`)); // Tess keeps access, Tina does not
+    await expect(del(db, T2)).rejects.toThrow(/trainers only/);
     expect(await count(db, 'dogs where id = $1', [DOG])).toBe(1);
   });
 

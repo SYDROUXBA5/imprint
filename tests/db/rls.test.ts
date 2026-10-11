@@ -1,6 +1,6 @@
 import type { PGlite } from '@electric-sql/pglite';
 import { describe, expect, it } from 'vitest';
-import { addUser, as, freshDb } from './harness';
+import { as, createUnit, freshDb, joinAs } from './harness';
 
 describe('PGlite RLS spike', () => {
   it('hides rows from authenticated when no policy allows them', async () => {
@@ -23,21 +23,18 @@ const TEAM = '30000000-0000-0000-0000-000000000001';
 
 async function setup() {
   const db = await freshDb();
-  for (const u of [T, H, X]) await addUser(db, u);
-  await as(db, T, () => db.query(`select public.create_unit('Wells K9', 'Tess')`));
-  const code = (await db.query<{ invite_code: string }>('select invite_code from units')).rows[0].invite_code;
-  await as(db, H, () => db.query(`select public.join_unit($1, 'Paul')`, [code.toLowerCase()]));
-  await as(db, X, () => db.query(`select public.create_unit('Other unit', 'Xavier')`));
-  const ids = async (user: string) =>
-    (await db.query<{ id: string; unit_id: string }>('select id, unit_id from members where user_id = $1', [user])).rows[0];
-  const t = await ids(T), h = await ids(H), x = await ids(X);
+  const links = await createUnit(db, 'Wells K9');
+  const otherLinks = await createUnit(db, 'Other unit');
+  const t = await joinAs(db, T, links.trainer, 'Tess');
+  const h = await joinAs(db, H, links.handler, 'Paul');
+  const x = await joinAs(db, X, otherLinks.trainer, 'Xavier');
   await as(db, T, () => db.query(
     `insert into teams (id, unit_id, name, created_by) values ($1, $2, 'Alpha', $3)`, [TEAM, t.unit_id, t.id]));
   await as(db, T, () => db.query(
     `insert into dogs (id, unit_id, name, created_by, team_id, breed, purpose) values ($1, $2, 'Rex', $3, $4, 'malinois', 'dual')`,
     [DOG, t.unit_id, t.id, TEAM]));
   mdmaOf.set(t.unit_id, await odourId(db, t.unit_id, 'MDMA'));
-  return { db, t, h, x, unit: t.unit_id };
+  return { db, t, h, x, links, unit: t.unit_id };
 }
 
 /** The unit's catalogue odour by name (the default catalogue is seeded by create_unit). */
@@ -54,12 +51,6 @@ const insertTimed = (db: PGlite, id: string, unit: string, handler: string, star
     [id, unit, DOG, mdmaOf.get(unit), handler, startedAt]);
 
 describe('permissions', () => {
-  it('invite code is 6 chars from the alphabet', async () => {
-    const { db } = await setup();
-    const codes = (await db.query<{ invite_code: string }>('select invite_code from units')).rows;
-    for (const c of codes) expect(c.invite_code).toMatch(/^[ABCDEFGHJKLMNPQRSTUVWXYZ2-9]{6}$/);
-  });
-
   it('handler cannot add a dog; trainer can', async () => {
     const { db, h, unit } = await setup();
     await expect(as(db, H, () => db.query(
@@ -125,8 +116,8 @@ describe('permissions', () => {
 
   it('removed handler: earlier sessions accepted, later ones rejected, no reads', async () => {
     const { db, h, unit } = await setup();
-    await as(db, T, () => db.query(
-      `update members set removed_at = '2026-10-03T12:00:00Z' where id = $1`, [h.id]));
+    // Removed at noon on 3 October (remove_member stamps the current time, so the test sets the moment).
+    await db.query(`update members set removed_at = '2026-10-03T12:00:00Z' where id = $1`, [h.id]);
     await as(db, H, () => insertTimed(db, '20000000-0000-0000-0000-000000000006', unit, h.id, '2026-10-03T11:00:00Z'));
     await expect(as(db, H, () =>
       insertTimed(db, '20000000-0000-0000-0000-000000000007', unit, h.id, '2026-10-03T13:00:00Z'),
@@ -137,8 +128,7 @@ describe('permissions', () => {
 
   it('a unit always keeps one trainer', async () => {
     const { db, t } = await setup();
-    await expect(as(db, T, () => db.query(
-      `update members set role = 'handler' where id = $1`, [t.id]),
+    await expect(as(db, T, () => db.query('select public.remove_member($1)', [t.id]),
     )).rejects.toThrow(/at least one trainer/);
   });
 
@@ -150,11 +140,11 @@ describe('permissions', () => {
     )).rejects.toThrow(/running timer/);
   });
 
-  it('wrong invite code and double join are refused', async () => {
-    const { db } = await setup();
+  it('a wrong link is refused, and a phone must open a link before it can do anything', async () => {
+    const { db, h } = await setup();
     const Y = '00000000-0000-0000-0000-0000000000d1';
-    await addUser(db, Y);
-    await expect(as(db, Y, () => db.query(`select public.join_unit('ZZZZZZ', 'Yan')`))).rejects.toThrow(/invalid invite code/);
-    await expect(as(db, H, () => db.query(`select public.create_unit('Again', 'Paul')`))).rejects.toThrow(/already in a unit/);
+    await db.query('insert into auth.users (id) values ($1)', [Y]);
+    await expect(as(db, Y, () => db.query(`select public.enter_with_link('ZZZZZZ')`))).rejects.toThrow(/invalid link/);
+    await expect(as(db, Y, () => db.query(`select public.choose_name($1)`, [h.id]))).rejects.toThrow(/invalid link/);
   });
 });
