@@ -1,5 +1,17 @@
-/** Pen-and-ink working dog (front view): ink strokes on paper, for the sign-in and empty states. */
-export function DogDrawing({ size = 160 }: { size?: number }) {
+import { useState } from 'react';
+
+/** The Malinois on the entry and empty screens. If the drawing can't load, a plain pen sketch stands in. */
+export function DogDrawing({ size = 200 }: { size?: number }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <PenSketch size={size} />;
+  return (
+    <img src={`${import.meta.env.BASE_URL}malinois-face.webp`} alt="Ink drawing of a Belgian Malinois"
+      width={size} height={size} style={{ objectFit: 'contain' }} onError={() => setFailed(true)} />
+  );
+}
+
+/** Pen-and-ink working dog (front view): ink strokes on paper. */
+function PenSketch({ size }: { size: number }) {
   return (
     <svg role="img" aria-label="Pen-and-ink drawing of a working dog" viewBox="0 0 200 200"
       width={size} height={size} fill="none" stroke="var(--ink)" strokeWidth="3"
