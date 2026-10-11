@@ -5,7 +5,7 @@ export function DogDrawing({ size = 200 }: { size?: number }) {
   const [failed, setFailed] = useState(false);
   if (failed) return <PenSketch size={size} />;
   return (
-    <img src={`${import.meta.env.BASE_URL}malinois-face.webp`} alt="Ink drawing of a Belgian Malinois"
+    <img src={`${import.meta.env.BASE_URL}malinois-face.webp`} alt="Ink drawing of a Belgian Malinois dog"
       width={size} height={size} style={{ objectFit: 'contain' }} onError={() => setFailed(true)} />
   );
 }
